@@ -9,3 +9,5 @@ pgvector
 fastembed
 langchain-text-splitters
 langchain-groq
+pypdf
+python-multipart

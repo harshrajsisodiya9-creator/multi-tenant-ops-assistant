@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Sequence
+from io import BytesIO
 from uuid import UUID
 
+from fastapi import UploadFile
 from fastembed import TextEmbedding
 from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -70,7 +71,58 @@ def embed_text(text: str) -> list[float]:
     return _normalize_embedding(embeddings[0] if embeddings else [])
 
 
-def ingest_document(
+def load_txt_document(file_name: str, content: bytes) -> str:
+    del file_name
+    return content.decode("utf-8")
+
+
+def load_md_document(file_name: str, content: bytes) -> str:
+    del file_name
+    return content.decode("utf-8")
+
+
+def load_pdf_document(file_name: str, content: bytes) -> str:
+    del file_name
+    from pypdf import PdfReader
+
+    reader = PdfReader(BytesIO(content))
+    pages: list[str] = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        if text.strip():
+            pages.append(text)
+    return "\n\n".join(pages)
+
+
+def load_document_text(file_name: str, content: bytes) -> str:
+    name = (file_name or "").lower()
+    if name.endswith(".pdf"):
+        return load_pdf_document(file_name, content)
+    if name.endswith(".txt"):
+        return load_txt_document(file_name, content)
+    if name.endswith((".md", ".markdown")):
+        return load_md_document(file_name, content)
+    raise ValueError(
+        f"Unsupported file type for '{file_name}'. Supported types: .pdf, .txt, .md"
+    )
+
+
+async def read_uploaded_document(file: UploadFile) -> str:
+    if file is None or not getattr(file, "filename", None):
+        raise ValueError("A file is required.")
+
+    content = await file.read()
+    if not content or not content.strip():
+        raise ValueError("The uploaded file is empty or unreadable.")
+
+    text = load_document_text(file.filename, content)
+    if not text or not text.strip():
+        raise ValueError("The uploaded file is empty or unreadable.")
+
+    return text
+
+
+def index_document(
     db: Session, tenant_id: UUID, source_document_id: str, text: str
 ) -> int:
     chunks = split_text_into_chunks(text)
@@ -95,6 +147,17 @@ def ingest_document(
 
     db.commit()
     return len(chunks)
+
+
+def ingest_document(
+    db: Session, tenant_id: UUID, source_document_id: str, text: str
+) -> int:
+    return index_document(
+        db=db,
+        tenant_id=tenant_id,
+        source_document_id=source_document_id,
+        text=text,
+    )
 
 
 def search_similar_chunks(
@@ -136,3 +199,47 @@ def generate_answer(question: str, context: str) -> str:
     )
     response = llm.invoke(prompt)
     return str(getattr(response, "content", response)).strip()
+
+
+def answer_question(
+    db: Session, tenant_id: UUID, question: str, limit: int = 5
+) -> dict:
+    if not question or not question.strip():
+        raise ValueError("Question cannot be empty.")
+
+    matches = search_similar_chunks(
+        db=db,
+        tenant_id=tenant_id,
+        question=question,
+        limit=limit,
+    )
+
+    if not matches:
+        return {
+            "tenant_id": str(tenant_id),
+            "question": question,
+            "matches_found": 0,
+            "top_matches": [],
+            "answer": "I couldn't find enough relevant context to answer that question.",
+            "context_preview": "",
+        }
+
+    context = "\n\n".join(chunk.content for chunk in matches)
+    answer = generate_answer(question=question, context=context)
+
+    return {
+        "tenant_id": str(tenant_id),
+        "question": question,
+        "matches_found": len(matches),
+        "top_matches": [
+            {
+                "chunk_id": chunk.id,
+                "source_document_id": chunk.source_document_id,
+                "chunk_index": chunk.chunk_index,
+                "content": chunk.content,
+            }
+            for chunk in matches
+        ],
+        "answer": answer,
+        "context_preview": context[:2000],
+    }

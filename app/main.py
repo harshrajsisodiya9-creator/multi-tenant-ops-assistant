@@ -1,20 +1,15 @@
-from uuid import UUID
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_tenant
 from app.database import get_db
+from app.knowledgebase import answer_question, index_document, read_uploaded_document
 from app.models import Tenant
-from app.retrieval import generate_answer, ingest_document, search_similar_chunks
 
 app = FastAPI()
-
-
-class DocumentIngestRequest(BaseModel):
-    source_document_id: str = Field(..., min_length=1)
-    text: str = Field(..., min_length=1)
 
 
 class AskRequest(BaseModel):
@@ -28,20 +23,30 @@ def get_verfiy(tenant: Tenant = Depends(get_current_tenant)):
 
 
 @app.post("/documents")
-def ingest_document_route(
-    payload: DocumentIngestRequest,
+async def ingest_document_route(
+    file: UploadFile = File(...),
+    source_document_id: str | None = Form(None),
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant),
 ):
-    chunk_count = ingest_document(
+    try:
+        text = await read_uploaded_document(file)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    document_id = source_document_id or Path(file.filename).stem
+    chunk_count = index_document(
         db=db,
         tenant_id=tenant.id,
-        source_document_id=payload.source_document_id,
-        text=payload.text,
+        source_document_id=document_id,
+        text=text,
     )
     return {
         "tenant_id": str(tenant.id),
-        "source_document_id": payload.source_document_id,
+        "source_document_id": document_id,
         "chunks_stored": chunk_count,
     }
 
@@ -52,33 +57,17 @@ def ask_question(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_tenant),
 ):
-    matches = search_similar_chunks(
+    result = answer_question(
         db=db,
         tenant_id=tenant.id,
         question=payload.question,
         limit=payload.limit,
     )
 
-    if not matches:
+    if result["matches_found"] == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No matching chunks found for this tenant.",
         )
 
-    context = "\n\n".join(chunk.content for chunk in matches)
-    answer = generate_answer(question=payload.question, context=context)
-    return {
-        "tenant_id": str(tenant.id),
-        "question": payload.question,
-        "top_matches": [
-            {
-                "chunk_id": chunk.id,
-                "source_document_id": chunk.source_document_id,
-                "chunk_index": chunk.chunk_index,
-                "content": chunk.content,
-            }
-            for chunk in matches
-        ],
-        "answer": answer,
-        "context_preview": context[:2000],
-    }
+    return result
