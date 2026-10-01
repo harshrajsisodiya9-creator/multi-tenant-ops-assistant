@@ -1,8 +1,16 @@
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import UserDefinedType
+
+
+class TSVector(UserDefinedType):
+    cache_ok = True
+
+    def get_col_spec(self):
+        return "TSVECTOR"
 
 from app.database import Base
 
@@ -34,5 +42,6 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
+    content_tsv = Column("content_tsv", TSVector(), server_default=None)
 
     tenant: Mapped[Tenant] = relationship(back_populates="chunks")
