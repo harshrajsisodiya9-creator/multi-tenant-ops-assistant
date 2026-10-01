@@ -241,5 +241,4 @@ def answer_question(
             for chunk in matches
         ],
         "answer": answer,
-        "context_preview": context[:2000],
     }

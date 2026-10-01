@@ -1,3 +1,5 @@
 Revision.txt
 .venv
 .env
+files
+:memory:.ses

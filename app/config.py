@@ -10,6 +10,10 @@ class Setting(BaseSettings):
     database_url: str = ""
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
+    groq_judge_model: str = "openai/gpt-oss-120b"
+    gemini_api_key: str = ""
+    gemini_model2: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-3.5-flash-lite"
 
 
 setting = Setting()
