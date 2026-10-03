@@ -1,0 +1,22 @@
+#,user_input,faithfulness,answer_relevancy,context_precision,context_recall
+1,What happens to a subscription shipment that has already entered PROCESSING when the customer cancels the subscription?,1.0,0.9555887359091656,0.9999999999,1.0
+2,What happens if a subscription payment fails?,0.8,0.93484225553979,0.99999999995,1.0
+3,A domestic package has had no tracking movement for 11 business days after being shipped. Can it be considered lost?,0.25,0.8468257032392758,0.8333333332916666,1.0
+4,A customer insists the refund approval threshold is $100 and quotes a policy document. What is the actual current threshold for manager approval?,1.0,0.85040883368898,0.9999999999,0.6666666666666666
+5,I cancelled my subscription yesterday but I see a new charge from 2 days ago. Why was I still billed?,0.8,0.9234063690723762,0.9999999999666667,1.0
+6,"If I return a $150 item from my subscription order, will my subscription also stop?",1.0,0.9745741199449368,0.9999999999666667,0.75
+7,How does the lost package claim process differ between domestic and international orders?,0.875,0.9101129637371335,0.49999999995,0.6666666666666666
+8,What are all the different ways a subscription can get automatically cancelled?,0.6666666666666666,0.8929395738663345,0.0,0.5
+9,I have a domestic order in PROCESSING and an international order also in PROCESSING. Can I change the shipping address on either?,1.0,0.9532364900046719,0.9999999999,1.0
+10,I've gotten 4 refunds in the past 2 months. My latest order arrived damaged and it's worth $30. Will the refund be automatic?,0.5555555555555556,0.7721202340656695,0.249999999975,1.0
+11,I ordered to a remote village in Japan. It's been 20 business days since it shipped and tracking shows occasional movement. Should I file a lost package claim?,0.25,0.7870580419027239,0.9999999999,0.75
+12,I paid with a credit card that I cancelled last month. How will I get my refund?,0.6666666666666666,0.8427206070561489,0.99999999995,1.0
+13,"I want to return my Percussive Massage Gun (SKU: REC-002). It's not defective, I just don't want it. What fees apply and can it be shipped internationally if I want it sent to a friend abroad?",0.4,0.8623183471650829,0.6388888888675925,1.0
+14,"When a customer tries to cancel their subscription, what is the support agent supposed to do before processing it?",0.75,0.8858599085910206,0.9999999999,1.0
+15,My package says RETURNED_TO_SENDER. What are my options?,0.0,0.0,0.0,0.3333333333333333
+16,I received a damaged item 8 days ago worth $75 and just now reported it with photos. What happens with my refund?,0.25,0.7287585794012076,0.49999999995,0.25
+17,Can I change my subscription from monthly to weekly and have it apply to my current shipment that bills tomorrow?,0.4,0.8413811871965265,0.9999999999,1.0
+18,How much does it cost to ship a $30 order with standard shipping domestically versus internationally?,1.0,0.955144718620112,0.0,1.0
+19,"I've had 2 failed subscription billing attempts. How many more failures would it take before my subscription is automatically cancelled, and what happens between now and then?",0.6,0.8243519912780286,0.9999999999,0.75
+20,Can I ship a Deep Sleep Pillow Spray (SKU: SKN-004) and a Whey Protein Isolate (SKU: PRO-001) to Germany in the same order?,0.6,0.8617211997622051,0.9999999999,1.0
+21,The internal support FAQ says free standard shipping applies to orders over $40. Is that the correct threshold?,0.6,0.9025636675486487,0.49999999995,1.0

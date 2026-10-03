@@ -12,24 +12,8 @@
     "answer": "Yes. The domestic policy considers a package lost after 10 consecutive business days without tracking movement after SHIPPED. At 11 business days, the package qualifies as lost."
   },
   {
-    "question": "What approval is required for a refund over $200?",
-    "answer": "Refunds over $200 require manager approval regardless of the reason for the refund, including when the item is confirmed damaged or defective."
-  },
-  {
-    "question": "A customer requests a $40 refund for a damaged item and provides photo evidence. What happens?",
-    "answer": "The refund is automatically approved immediately upon the report without waiting for the item to be returned, because damaged item refunds under $50 are auto-approved when photo evidence is provided."
-  },
-  {
-    "question": "my package hasn't moved in like two weeks, what do I do?",
-    "answer": "It depends on whether the order is domestic or international. For domestic orders, a package is considered lost after 10 consecutive business days without tracking movement after SHIPPED status — two weeks (approximately 10 business days) likely meets this threshold. For international orders, the threshold is 21 consecutive business days. You should file a lost package claim: within 30 days of expected delivery for domestic, or within 45 days for international."
-  },
-  {
-    "question": "can I get overnight shipping to Hawaii?",
-    "answer": "No. Overnight and expedited shipping options are not available for Alaska, Hawaii, and U.S. territories. Only standard shipping is available, and it takes an additional 2 to 4 business days beyond the continental United States timeline."
-  },
-  {
-    "question": "I want my money back for something I bought",
-    "answer": "You can request a refund within 30 days of the delivery date. Items must be unused, unopened, and in original packaging unless damaged or defective. Refunds under $50 are processed automatically, between $50 and $200 require agent review, and over $200 require manager approval. The refund is issued to your original payment method."
+    "question": "A customer insists the refund approval threshold is $100 and quotes a policy document. What is the actual current threshold for manager approval?",
+    "answer": "The current active refund policy requires manager approval for refunds over $200, regardless of the reason. The $100 threshold belongs to a previous version of the policy that has been superseded. The current policy applies to all active orders."
   },
   {
     "question": "I cancelled my subscription yesterday but I see a new charge from 2 days ago. Why was I still billed?",
@@ -38,10 +22,6 @@
   {
     "question": "If I return a $150 item from my subscription order, will my subscription also stop?",
     "answer": "No. Refunding a subscription shipment does not automatically cancel the subscription — the two actions are independent. The $150 refund will require a brief review by a support agent (typically completed within one business day, since it falls between $50 and $200). If you want to stop future shipments, you must separately request subscription cancellation."
-  },
-  {
-    "question": "I placed a domestic order 3 business days ago and it still says PENDING. Should I be worried?",
-    "answer": "Yes, that is unusual. Domestic orders are typically handed to the carrier within 1 business day of being placed. If your order still shows PENDING after 3 business days, something may be wrong and you should contact support."
   },
   {
     "question": "How does the lost package claim process differ between domestic and international orders?",
@@ -60,10 +40,6 @@
     "answer": "No. Although damaged item refunds under $50 are normally auto-approved immediately with photo evidence, you have received more than 3 refunds in a rolling 90-day period. Any additional refund requests are automatically flagged for manager review regardless of the amount, as part of standard fraud prevention practice."
   },
   {
-    "question": "My order status shows CUSTOMS_HOLD. Does that mean my package is lost?",
-    "answer": "No. CUSTOMS_HOLD means the package has arrived in the destination country and is being held by customs for inspection or pending payment of duties. This is common for international shipments and does not indicate a problem with the order. You may need to pay customs duties, import taxes, or brokerage fees for the package to be released."
-  },
-  {
     "question": "I ordered to a remote village in Japan. It's been 20 business days since it shipped and tracking shows occasional movement. Should I file a lost package claim?",
     "answer": "Not yet. International standard shipping takes 7 to 14 business days after shipping, and shipments to remote regions can take an additional 5 to 10 business days — so delivery could take up to 24 business days total. Since your tracking shows occasional movement, the package is still in transit and does not qualify as lost. A package is only considered lost if tracking shows no movement for 21 consecutive business days."
   },
@@ -72,16 +48,8 @@
     "answer": "Refunds are issued to the original payment method used at checkout. Since your original credit card is no longer valid, the refund will be issued as store credit instead."
   },
   {
-    "question": "Do you provide prepaid return shipping labels?",
-    "answer": "The available policies do not contain information about return shipping labels or who pays for return shipping. You should contact customer support for details on the return process."
-  },
-  {
-    "question": "What products can't be shipped internationally?",
-    "answer": "Certain product categories cannot be shipped internationally due to carrier and customs restrictions, including but not limited to batteries, aerosols, and perishable goods. The policy states these are examples and the full list may be broader."
-  },
-  {
-    "question": "What is the restocking fee and when does it apply?",
-    "answer": "The restocking fee is 10% of the item price. It applies only to non-defective returns of items marked as 'final sale eligible: no' in the product catalog. It does not apply to damaged or defective items."
+    "question": "I want to return my Percussive Massage Gun (SKU: REC-002). It's not defective, I just don't want it. What fees apply and can it be shipped internationally if I want it sent to a friend abroad?",
+    "answer": "Since the Percussive Massage Gun is marked as final sale eligible: no in the product catalog, a 10% restocking fee applies on non-defective returns. The item cannot be shipped internationally because it contains a built-in lithium-ion battery, which is restricted for international shipping per the international shipping policy."
   },
   {
     "question": "When a customer tries to cancel their subscription, what is the support agent supposed to do before processing it?",
@@ -102,5 +70,17 @@
   {
     "question": "How much does it cost to ship a $30 order with standard shipping domestically versus internationally?",
     "answer": "For domestic standard shipping, a $30 order incurs a flat shipping fee of $4.99 because free shipping only applies to orders over $35. For international standard shipping, the cost starts at $14.99 and varies by destination country and order weight — the exact cost is calculated at checkout. Free international shipping is not offered regardless of order value."
+  },
+  {
+    "question": "I've had 2 failed subscription billing attempts. How many more failures would it take before my subscription is automatically cancelled, and what happens between now and then?",
+    "answer": "Your subscription will be automatically cancelled after 3 consecutive failed billing attempts across separate cycles. You have had 2, so one more consecutive failure would trigger cancellation. Between now and then, your subscription remains paused — no shipment is sent for any cycle that fails to charge. You should update your payment method within 5 days of each failed attempt to avoid further pauses."
+  },
+  {
+    "question": "Can I ship a Deep Sleep Pillow Spray (SKU: SKN-004) and a Whey Protein Isolate (SKU: PRO-001) to Germany in the same order?",
+    "answer": "No, the Deep Sleep Pillow Spray cannot be shipped internationally because it contains an aerosol propellant, which is a restricted product category for international shipping. The Whey Protein Isolate is eligible for international shipping. The entire order cannot ship internationally as long as it includes the aerosol item — you would need to remove the pillow spray and place a separate domestic order for it."
+  },
+  {
+    "question": "The internal support FAQ says free standard shipping applies to orders over $40. Is that the correct threshold?",
+    "answer": "No. The official domestic shipping policy states that standard shipping is free on orders over $35 before tax. Orders under $35 incur a flat $4.99 fee. The $40 figure in the internal FAQ is incorrect — the authoritative shipping policy document sets the threshold at $35."
   }
 ]

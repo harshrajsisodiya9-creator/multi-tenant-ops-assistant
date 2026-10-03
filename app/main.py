@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_tenant
 from app.database import get_db
-from app.knowledgebase import answer_question, index_document, read_uploaded_document
+from app.hybrid_search import answer_question
+from app.knowledgebase import index_document, read_uploaded_document
 from app.models import Tenant
 
 app = FastAPI()

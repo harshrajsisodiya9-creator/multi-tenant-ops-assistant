@@ -1,7 +1,7 @@
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, Computed, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
 
@@ -42,6 +42,6 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
-    content_tsv = Column("content_tsv", TSVector(), server_default=None)
+    content_tsv = Column("content_tsv", TSVector(), Computed("to_tsvector('english', content)", persisted=True))
 
     tenant: Mapped[Tenant] = relationship(back_populates="chunks")

@@ -22,8 +22,8 @@ from Eval.eval import generate_results
 REQUESTS_PER_MINUTE = 15
 MAX_RETRIES = 5
 BASE_BACKOFF_SECONDS = 2.0
-OUTPUT_PATH = Path(__file__).resolve().parents[1] / "phase1_baseline_results_gemini.csv"
-SCORES_PATH = Path(__file__).resolve().parents[1] / "phase1_scores_gemini.csv"
+OUTPUT_PATH = Path(__file__).resolve().parents[1] / "phase2_baseline_results_gemini.csv"
+SCORES_PATH = Path(__file__).resolve().parents[1] / "phase2_scores_gemini.csv"
 OUTPUT_COLUMNS = [
     "user_input",
     "response",
@@ -83,7 +83,9 @@ def is_rate_limit_error(error):
     status = getattr(error, "status_code", None)
     if status == 429:
         return True
-    if any(s in message for s in ("rate limit", "too many requests", "resource_exhausted")):
+    if any(
+        s in message for s in ("rate limit", "too many requests", "resource_exhausted")
+    ):
         return True
     cause = getattr(error, "__cause__", None)
     if cause is not None:
@@ -100,9 +102,12 @@ async def rate_limited_call(operation, *args, **kwargs):
             if not is_rate_limit_error(error):
                 raise
             if retry_number >= MAX_RETRIES:
-                print(f"Rate-limit retries exhausted after {MAX_RETRIES} retries", flush=True)
+                print(
+                    f"Rate-limit retries exhausted after {MAX_RETRIES} retries",
+                    flush=True,
+                )
                 raise
-            delay = random.uniform(0, BASE_BACKOFF_SECONDS * (2 ** retry_number))
+            delay = random.uniform(0, BASE_BACKOFF_SECONDS * (2**retry_number))
             print(
                 f"Rate limited; retry {retry_number + 1}/{MAX_RETRIES} in {delay:.1f}s",
                 flush=True,
@@ -154,7 +159,9 @@ async def evaluate_sample(item, index, total):
 
     faith_result = await score(faithfulness, response=item["response"], **common)
     relevancy_result = await score(
-        answer_relevancy, response=item["response"], user_input=item["user_input"],
+        answer_relevancy,
+        response=item["response"],
+        user_input=item["user_input"],
     )
     prec_result = await score(context_precision, reference=item["reference"], **common)
     recall_result = await score(context_recall, reference=item["reference"], **common)
@@ -188,7 +195,13 @@ async def main(limit=None):
     df = pd.DataFrame(evaluated, columns=OUTPUT_COLUMNS)
     df.to_csv(OUTPUT_PATH, index=False)
 
-    score_cols = ["user_input", "faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+    score_cols = [
+        "user_input",
+        "faithfulness",
+        "answer_relevancy",
+        "context_precision",
+        "context_recall",
+    ]
     scores_df = df[score_cols].copy()
     scores_df.insert(0, "#", range(1, len(scores_df) + 1))
     scores_df.to_csv(SCORES_PATH, index=False)

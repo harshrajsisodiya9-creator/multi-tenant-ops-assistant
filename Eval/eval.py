@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID
 
 from app.database import get_db
-from app.knowledgebase import answer_question
+from app.hybrid_search import answer_question
 
 Path_Directory = Path(__file__).resolve().parent
 
