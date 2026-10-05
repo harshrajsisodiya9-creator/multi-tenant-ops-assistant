@@ -2,17 +2,28 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from fastembed.rerank.cross_encoder import TextCrossEncoder
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import setting
 from app.knowledgebase import embed_text, generate_answer
 from app.models import Chunk
 
 RRF_K = 60
 DEFAULT_LIMIT = 5
-VECTOR_CANDIDATES = 20
-BM25_CANDIDATES = 20
+VECTOR_CANDIDATES = 40
+BM25_CANDIDATES = 40
+RERANK_POOL = 35
+
+RERANK_MODEL_NAME = "Xenova/ms-marco-MiniLM-L-6-v2"
+_reranker: TextCrossEncoder | None = None
+
+
+def get_reranker() -> TextCrossEncoder:
+    global _reranker
+    if _reranker is None:
+        _reranker = TextCrossEncoder(model_name=RERANK_MODEL_NAME)
+    return _reranker
 
 
 def _vector_search(
@@ -86,7 +97,7 @@ def search_hybrid(
     vector_results = _vector_search(db, tenant_id, query_embedding, VECTOR_CANDIDATES)
     bm25_results = _bm25_search(db, tenant_id, question, BM25_CANDIDATES)
 
-    fused_ids = _rrf_fuse([vector_results, bm25_results])[:limit]
+    fused_ids = _rrf_fuse([vector_results, bm25_results])[:RERANK_POOL]
 
     if not fused_ids:
         return []
@@ -97,7 +108,16 @@ def search_hybrid(
             select(Chunk).where(Chunk.id.in_(fused_ids))
         ).scalars().all()
     }
-    return [chunks_by_id[cid] for cid in fused_ids if cid in chunks_by_id]
+    pool = [chunks_by_id[cid] for cid in fused_ids if cid in chunks_by_id]
+
+    if len(pool) <= limit:
+        return pool
+
+    reranker = get_reranker()
+    docs = [chunk.content for chunk in pool]
+    scores = list(reranker.rerank(question, docs))
+    ranked = sorted(zip(pool, scores), key=lambda x: x[1], reverse=True)
+    return [chunk for chunk, _score in ranked[:limit]]
 
 
 def answer_question(

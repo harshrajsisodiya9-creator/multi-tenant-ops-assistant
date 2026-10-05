@@ -194,6 +194,7 @@ def generate_answer(question: str, context: str) -> str:
 
     prompt = (
         "Answer the user's question using only the provided context. "
+        "Dont make assumptions or provide information that is not in the context. "
         "If the answer is not in the context, say that the information is not available.\n\n"
         f"Question: {question}\n\nContext:\n{context}"
     )

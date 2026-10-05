@@ -20,3 +20,5 @@ vertexai
 litellm==1.70.4
 # langchain-openai and instructor require OpenAI 1.x; keep their shared SDK range.
 openai>=1.70,<2
+langgraph
+pyyaml

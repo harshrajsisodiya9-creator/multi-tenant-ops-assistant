@@ -1,0 +1,30 @@
+tenant_id: tiny-candles
+active: true
+support_email: hello@tinycandles.in
+
+max_auto_refund: null
+max_refunds_per_customer_30d: 5
+refund_always_escalate: true
+
+default:
+  return_policy:
+    allowed: true
+    window_days: 14
+    condition: any
+    refund_type: original_method
+  exchange_policy:
+    allowed: true
+    window_days: 14
+    same_category_only: false
+
+categories:
+  subscription_box:
+    subscription_policy:
+      cancel_allowed: true
+      min_commitment_months: 1
+
+subscription:
+  cancel_allowed: true
+  cancel_notice_days: 0
+  prorated_refund: false
+  min_commitment_months: 0
