@@ -14,6 +14,7 @@ class Setting(BaseSettings):
     gemini_api_key: str = ""
     gemini_model2: str = "gemini-3.1-flash-lite"
     gemini_model: str = "gemini-3.5-flash-lite"
+    agent_mode: str = "mock"
 
 
 setting = Setting()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.graph.agent.react_agent import run_react_agent
+from app.graph.agent_factory import get_react_agent
 from app.graph.mock_data import get_order
 from app.graph.state import AgentState
 
@@ -70,6 +70,7 @@ def _run_react_agent(
     constraints: dict,
     user_message: str,
 ) -> tuple[str, list[dict]]:
+    run_react_agent = get_react_agent()
     order_id = entities.get("order_id", "")
     agent_result = run_react_agent(
         tenant_id=tenant_id,
