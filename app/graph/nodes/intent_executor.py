@@ -108,11 +108,21 @@ def _build_escalation_context(reason_code: str, entities: dict) -> str:
     return messages.get(reason_code, f"This request has been escalated for review ({reason_code}).")
 
 
-def _build_clarify_context(reason_code: str) -> str:
+def _build_clarify_context(reason_code: str, constraints: dict | None = None) -> str:
+    if reason_code == "AMBIGUOUS_ORDER" and constraints and constraints.get("matching_orders"):
+        orders = constraints["matching_orders"]
+        listing = "\n".join(f"  • {o}" for o in orders)
+        return f"I found multiple orders that could match. Which one did you mean?\n{listing}"
+
+    if reason_code == "MISSING_ORDER_ID" and constraints and constraints.get("order_count"):
+        count = constraints["order_count"]
+        return f"I see {count} orders on your account. Could you share the order number so I can pull up the right one?"
+
     messages = {
         "LOW_CONFIDENCE": "Could you rephrase that? I want to make sure I understand your request correctly.",
         "VERIFICATION_REQUIRED": "Could you share your order number or the email address associated with your account?",
         "IDENTITY_MISMATCH": "The order you referenced doesn't match the email address on file. Could you double-check?",
+        "NO_ORDERS_FOUND": "I couldn't find any orders associated with your account. Could you check the email address or order number?",
     }
     return messages.get(reason_code, "Could you provide more details so I can help?")
 
@@ -176,7 +186,7 @@ def intent_executor_node(state: AgentState) -> dict:
             has_escalations = True
 
         elif action == "clarify":
-            result["domain_result"] = _build_clarify_context(result["reason_code"])
+            result["domain_result"] = _build_clarify_context(result["reason_code"], constraints)
             result["status"] = "needs_clarification"
 
     response_phase = "partial" if has_escalations else "complete"

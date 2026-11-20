@@ -485,6 +485,11 @@ MOCK_REFUND_HISTORY: dict[str, dict[str, list[dict]]] = {
 }
 
 
+def get_orders_by_email(tenant_id: str, email: str) -> list[dict]:
+    orders = MOCK_ORDERS.get(tenant_id, {})
+    return [o for o in orders.values() if o.get("customer_email", "").lower() == email.lower()]
+
+
 def get_order(tenant_id: str, order_id: str) -> dict | None:
     return MOCK_ORDERS.get(tenant_id, {}).get(order_id)
 
