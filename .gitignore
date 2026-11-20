@@ -3,3 +3,7 @@ Revision.txt
 .env
 files
 :memory:.ses
+CODE_EXPLANATION.txt
+app/graph/GRAPH_WORKFLOW.txt
+RESPONSE_AGENT_PLAN.md
+FLOW_REQUESTS.txt

@@ -1,0 +1,40 @@
+tenant_id: megamart
+active: true
+support_email: support@megamart.com
+
+max_auto_refund: 10000
+max_refunds_per_customer_30d: 3
+refund_always_escalate: false
+
+default:
+  return_policy:
+    allowed: true
+    window_days: 14
+    condition: any
+    refund_type: original_method
+  exchange_policy:
+    allowed: true
+    window_days: 15
+    same_category_only: false
+
+categories:
+  electronics:
+    return_policy:
+      window_days: 30
+      condition: unopened
+  clothing:
+    return_policy:
+      window_days: 7
+    exchange_policy:
+      same_category_only: true
+  perishables:
+    return_policy:
+      allowed: false
+    exchange_policy:
+      allowed: false
+
+subscription:
+  cancel_allowed: true
+  cancel_notice_days: 3
+  prorated_refund: true
+  min_commitment_months: 0

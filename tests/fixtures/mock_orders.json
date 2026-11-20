@@ -1,0 +1,36 @@
+{
+  "tenants": {
+    "megamart": {"active": true, "support_email": "support@megamart.com"},
+    "tiny-candles": {"active": true, "support_email": "hello@tinycandles.in"},
+    "inactive-co": {"active": false, "support_email": "support@inactive.com"}
+  },
+  "orders": {
+    "megamart": {
+      "ORD-MM-1001": {"order_id": "ORD-MM-1001", "customer_email": "alice@example.com", "category": "electronics", "product": "Wireless Headphones", "amount": 4500, "status": "delivered", "order_date": "2026-09-10", "delivery_date": "2026-09-20"},
+      "ORD-MM-1002": {"order_id": "ORD-MM-1002", "customer_email": "bob@example.com", "category": "clothing", "product": "Cotton T-Shirt", "amount": 1200, "status": "delivered", "order_date": "2026-09-05", "delivery_date": "2026-09-15"},
+      "ORD-MM-1003": {"order_id": "ORD-MM-1003", "customer_email": "charlie@example.com", "category": "perishables", "product": "Organic Fruit Box", "amount": 850, "status": "delivered", "order_date": "2026-09-25", "delivery_date": "2026-09-28"},
+      "ORD-MM-1004": {"order_id": "ORD-MM-1004", "customer_email": "dave@example.com", "category": "electronics", "product": "4K OLED TV", "amount": 65000, "status": "delivered", "order_date": "2026-09-05", "delivery_date": "2026-09-10"},
+      "ORD-MM-1005": {"order_id": "ORD-MM-1005", "customer_email": "alice@example.com", "category": "clothing", "product": "Winter Jacket", "amount": 3800, "status": "processing", "order_date": "2026-10-02", "delivery_date": null},
+      "ORD-MM-1006": {"order_id": "ORD-MM-1006", "customer_email": "eve@example.com", "category": "electronics", "product": "Bluetooth Speaker", "amount": 2500, "status": "shipped", "order_date": "2026-09-30", "delivery_date": null},
+      "ORD-MM-1007": {"order_id": "ORD-MM-1007", "customer_email": "frank@example.com", "category": "electronics", "product": "USB-C Hub", "amount": 1800, "status": "pending", "order_date": "2026-10-03", "delivery_date": null},
+      "ORD-MM-1008": {"order_id": "ORD-MM-1008", "customer_email": "frank@example.com", "category": "subscription", "product": "MegaMart Plus Monthly", "amount": 499, "status": "active", "order_date": "2026-08-01", "delivery_date": null}
+    },
+    "tiny-candles": {
+      "ORD-TC-2001": {"order_id": "ORD-TC-2001", "customer_email": "grace@example.com", "category": "candles", "product": "Lavender Soy Candle", "amount": 1450, "status": "delivered", "order_date": "2026-09-20", "delivery_date": "2026-09-25"},
+      "ORD-TC-2002": {"order_id": "ORD-TC-2002", "customer_email": "henry@example.com", "category": "candles", "product": "Candle Gift Set", "amount": 3200, "status": "delivered", "order_date": "2026-08-20", "delivery_date": "2026-09-01"},
+      "ORD-TC-2003": {"order_id": "ORD-TC-2003", "customer_email": "iris@example.com", "category": "subscription_box", "product": "Monthly Candle Box", "amount": 999, "status": "active", "order_date": "2026-09-20", "delivery_date": null},
+      "ORD-TC-2004": {"order_id": "ORD-TC-2004", "customer_email": "jack@example.com", "category": "candles", "product": "Vanilla Bean Candle", "amount": 750, "status": "processing", "order_date": "2026-10-03", "delivery_date": null},
+      "ORD-TC-2005": {"order_id": "ORD-TC-2005", "customer_email": "grace@example.com", "category": "candles", "product": "Citrus Burst Candle", "amount": 2100, "status": "delivered", "order_date": "2026-09-22", "delivery_date": "2026-09-28"}
+    }
+  },
+  "refund_history": {
+    "megamart": {
+      "alice@example.com": [
+        {"order_id": "ORD-MM-9001", "amount": 3000, "date": "2026-09-20"},
+        {"order_id": "ORD-MM-9002", "amount": 2500, "date": "2026-09-25"},
+        {"order_id": "ORD-MM-9003", "amount": 1500, "date": "2026-09-28"}
+      ]
+    },
+    "tiny-candles": {}
+  }
+}

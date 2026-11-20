@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID
 
 from app.database import get_db
-from app.knowledgebase import answer_question
+from app.hybrid_search import answer_question
 
 Path_Directory = Path(__file__).resolve().parent
 
@@ -40,13 +40,16 @@ def generate_results(limit=None):
                 raise RuntimeError(f"Failed after 3 retries on question {pair}")
 
             context = [match["content"] for match in response["top_matches"]]
+            answer = response.get("answer") or ""
+            if not answer.strip():
+                answer = "No relevant information found."
             print(f"pair processed: {pair}/{len(dataset)}", flush=True)
             results.append(
                 {
                     "user_input": item["question"],
                     "reference": item["answer"],
                     "retrieved_contexts": context,
-                    "response": response["answer"],
+                    "response": answer,
                 }
             )
     finally:
