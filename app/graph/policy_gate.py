@@ -19,7 +19,7 @@ class GateContext:
     tenant_id: str
     tenant_active: bool
     router_output: RouterOutput
-    customer_email: str | None = None
+    customer_id: str = ""
     order: dict | None = None
     refund_count_30d: int = 0
     today: date = field(default_factory=date.today)
@@ -43,29 +43,13 @@ def evaluate_policy(
 
     if ro.intent in ORDER_INTENTS:
         has_order_id = bool(ro.entities.get("order_id"))
-        has_email = bool(ro.entities.get("email") or ctx.customer_email)
-        if not has_order_id and not has_email:
+        has_customer = bool(ctx.customer_id)
+        if not has_order_id and not has_customer:
             return PolicyDecision(action="clarify", reason_code="VERIFICATION_REQUIRED")
 
-        if has_order_id and ctx.order:
-            order_email = ctx.order.get("customer_email", "")
-            provided_email = ro.entities.get("email") or ctx.customer_email
-            if (
-                provided_email
-                and order_email
-                and provided_email.lower() != order_email.lower()
-            ):
-                return PolicyDecision(
-                    action="clarify", reason_code="IDENTITY_MISMATCH"
-                )
-
     # ── Layer 2: global safety ceiling ───────────────────────────────
-    if ro.intent == "refund" and ctx.order:
-        amount = ctx.order.get("amount", 0)
-        if amount > GLOBAL_REFUND_CEILING:
-            return PolicyDecision(
-                action="escalate", reason_code="GLOBAL_REFUND_CEILING"
-            )
+    # Moved to _evaluate_refund so the allow-with-approval path
+    # can include return-policy constraints for the agent.
 
     # ── Layer 3: tenant intent rules ─────────────────────────────────
     if ro.intent == "faq":
@@ -96,12 +80,16 @@ def evaluate_policy(
 
 
 def _evaluate_refund(ctx: GateContext, config: dict) -> PolicyDecision:
-    if config.get("refund_always_escalate", False):
-        return PolicyDecision(
-            action="escalate", reason_code="TENANT_REFUND_REVIEW_REQUIRED"
-        )
-
     if not ctx.order:
+        if config.get("refund_always_escalate", False) and ctx.customer_id:
+            return PolicyDecision(
+                action="allow",
+                reason_code="REFUND_NEEDS_APPROVAL",
+                constraints={
+                    "needs_approval": True,
+                    "approval_reasons": ["TENANT_REFUND_REVIEW_REQUIRED"],
+                },
+            )
         return PolicyDecision(action="clarify", reason_code="VERIFICATION_REQUIRED")
 
     category = ctx.order.get("category")
@@ -117,27 +105,50 @@ def _evaluate_refund(ctx: GateContext, config: dict) -> PolicyDecision:
         if days_since > policy.return_policy.window_days:
             return PolicyDecision(action="block", reason_code="RETURN_WINDOW_EXPIRED")
 
-    max_auto = config.get("max_auto_refund")
+    base_constraints = {
+        "refund_type": policy.return_policy.refund_type,
+        "condition": policy.return_policy.condition,
+    }
+
+    approval_reasons: list[str] = []
     amount = ctx.order.get("amount", 0)
+
+    if config.get("refund_always_escalate", False):
+        approval_reasons.append("TENANT_REFUND_REVIEW_REQUIRED")
+
+    if amount > GLOBAL_REFUND_CEILING:
+        approval_reasons.append("GLOBAL_REFUND_CEILING")
+
+    max_auto = config.get("max_auto_refund")
     if max_auto is not None and amount > max_auto:
-        return PolicyDecision(action="escalate", reason_code="REFUND_OVER_LIMIT")
+        approval_reasons.append("REFUND_OVER_LIMIT")
 
     max_refunds = config.get("max_refunds_per_customer_30d", 999)
     if ctx.refund_count_30d >= max_refunds:
-        return PolicyDecision(action="escalate", reason_code="REFUND_RATE_LIMITED")
+        approval_reasons.append("REFUND_RATE_LIMITED")
 
-    if policy.return_policy.max_amount and amount > policy.return_policy.max_amount:
-        return PolicyDecision(action="escalate", reason_code="REFUND_OVER_LIMIT")
+    if (
+        policy.return_policy.max_amount
+        and amount > policy.return_policy.max_amount
+        and "REFUND_OVER_LIMIT" not in approval_reasons
+    ):
+        approval_reasons.append("REFUND_OVER_LIMIT")
 
-    # Product-level override would plug in here.
+    if approval_reasons:
+        return PolicyDecision(
+            action="allow",
+            reason_code="REFUND_NEEDS_APPROVAL",
+            constraints={
+                **base_constraints,
+                "needs_approval": True,
+                "approval_reasons": approval_reasons,
+            },
+        )
 
     return PolicyDecision(
         action="allow",
         reason_code="REFUND_ALLOWED",
-        constraints={
-            "refund_type": policy.return_policy.refund_type,
-            "condition": policy.return_policy.condition,
-        },
+        constraints=base_constraints,
     )
 
 

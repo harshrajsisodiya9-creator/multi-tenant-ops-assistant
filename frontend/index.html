@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Ops Assistant</title>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --bg-card: #ffffff;
+  --bg-sidebar: #1a1d23;
+  --bg-chat: #f0f2f5;
+  --bg-msg-user: #4f46e5;
+  --bg-msg-bot: #ffffff;
+  --text: #1a1d23;
+  --text-light: #6b7280;
+  --text-inverse: #ffffff;
+  --text-sidebar: #e5e7eb;
+  --border: #e5e7eb;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ─── Home Page ─── */
+.home-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 60px 16px;
+}
+
+.home-header {
+  text-align: center;
+  margin-bottom: 48px;
+  position: relative;
+}
+
+.home-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.home-header p {
+  color: var(--text-light);
+  font-size: 1.05rem;
+}
+
+.settings-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-light);
+  transition: border-color 0.15s;
+}
+
+.settings-btn:hover { border-color: var(--accent); color: var(--text); }
+
+.settings-btn .gear {
+  font-size: 1.1rem;
+}
+
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 24px;
+}
+
+.company-card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 32px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+  position: relative;
+}
+
+.company-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--accent);
+}
+
+.company-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 16px;
+}
+
+.company-card h2 {
+  font-size: 1.3rem;
+  margin-bottom: 4px;
+}
+
+.company-card .company-email {
+  color: var(--text-light);
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.company-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.company-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.key-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.key-badge.set { background: #d1fae5; color: #065f46; }
+.key-badge.unset { background: #fef3c7; color: #92400e; }
+
+/* ─── Settings Modal ─── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 32px;
+  max-width: 520px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.modal h2 {
+  font-size: 1.2rem;
+  margin-bottom: 4px;
+}
+
+.modal .modal-subtitle {
+  color: var(--text-light);
+  font-size: 0.85rem;
+  margin-bottom: 20px;
+}
+
+.modal-tenant {
+  margin-bottom: 16px;
+}
+
+.modal-tenant label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.modal-tenant input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  outline: none;
+  font-family: monospace;
+}
+
+.modal-tenant input:focus { border-color: var(--accent); }
+
+.modal-hint {
+  font-size: 0.78rem;
+  color: var(--text-light);
+  margin-top: 4px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.modal-actions button {
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: none;
+  font-weight: 500;
+}
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border) !important;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+/* ─── Customer Selection ─── */
+.customer-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 40px 16px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 24px;
+  font-weight: 500;
+}
+
+.back-btn:hover { text-decoration: underline; }
+
+.customer-page h2 {
+  font-size: 1.5rem;
+  margin-bottom: 8px;
+}
+
+.customer-page .subtitle {
+  color: var(--text-light);
+  margin-bottom: 24px;
+}
+
+.no-key-warning {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 0.85rem;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.no-key-warning button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  background: #92400e;
+  color: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.customer-item {
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+
+.customer-item:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+}
+
+.customer-info h3 {
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.customer-info .cust-id {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  font-family: monospace;
+}
+
+.customer-info .cust-email {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.customer-orders-badge {
+  background: var(--bg);
+  color: var(--text-light);
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.arrow-icon {
+  color: var(--text-light);
+  font-size: 1.2rem;
+  margin-left: 12px;
+}
+
+/* ─── Chat Page ─── */
+.chat-container {
+  display: flex;
+  height: 100vh;
+}
+
+.chat-sidebar {
+  width: 280px;
+  background: var(--bg-sidebar);
+  color: var(--text-sidebar);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-header h3 {
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.sidebar-header p {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.sidebar-customer {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-customer .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  margin-bottom: 6px;
+}
+
+.sidebar-customer .name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.sidebar-customer .email {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.sidebar-customer .cid {
+  font-size: 0.75rem;
+  opacity: 0.4;
+  font-family: monospace;
+  margin-top: 4px;
+}
+
+.sidebar-orders {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.sidebar-orders .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.sidebar-order-item {
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+  cursor: default;
+}
+
+.sidebar-order-item:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.sidebar-order-item .oid {
+  font-family: monospace;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.sidebar-order-item .product {
+  opacity: 0.7;
+}
+
+.sidebar-order-item .meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  opacity: 0.5;
+  font-size: 0.75rem;
+}
+
+.order-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.order-status.delivered { background: #065f46; color: #6ee7b7; }
+.order-status.shipped   { background: #1e3a5f; color: #93c5fd; }
+.order-status.processing { background: #78350f; color: #fcd34d; }
+.order-status.pending   { background: #374151; color: #d1d5db; }
+.order-status.active    { background: #064e3b; color: #34d399; }
+
+.sidebar-back {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-back button {
+  width: 100%;
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: var(--text-sidebar);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.sidebar-back button:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-header {
+  padding: 16px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow);
+}
+
+.chat-header .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.chat-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.chat-header .thread-id {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  font-family: monospace;
+  margin-left: auto;
+}
+
+.chat-key-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--text-light);
+}
+
+.chat-key-btn:hover { border-color: var(--accent); color: var(--accent); }
+.chat-key-btn.has-key { border-color: var(--success); color: var(--success); }
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--bg-chat);
+}
+
+.msg {
+  max-width: 75%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.user {
+  background: var(--bg-msg-user);
+  color: var(--text-inverse);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.msg.bot {
+  background: var(--bg-msg-bot);
+  color: var(--text);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow);
+}
+
+.msg.system {
+  background: #fef3c7;
+  color: #92400e;
+  align-self: center;
+  font-size: 0.82rem;
+  max-width: 90%;
+  text-align: center;
+  border-radius: var(--radius-sm);
+}
+
+.msg.error {
+  background: #fef2f2;
+  color: #991b1b;
+  align-self: center;
+  font-size: 0.82rem;
+  max-width: 90%;
+  text-align: center;
+  border-radius: var(--radius-sm);
+}
+
+.typing-indicator {
+  align-self: flex-start;
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--bg-msg-bot);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-light);
+  animation: bounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: 0s; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+.chat-input-area {
+  padding: 16px 24px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-input-row textarea {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  max-height: 120px;
+  min-height: 44px;
+  line-height: 1.4;
+}
+
+.chat-input-row textarea:focus { border-color: var(--accent); }
+
+.send-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.send-btn:hover { background: var(--accent-hover); }
+.send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+/* ─── Escalation Banner ─── */
+.escalation-banner {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin: 8px 24px;
+}
+
+.escalation-banner h4 {
+  color: #92400e;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.escalation-item {
+  background: white;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid #fde68a;
+}
+
+.escalation-item p {
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.escalation-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.escalation-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.escalation-actions .approve { background: #10b981; color: white; }
+.escalation-actions .deny { background: #ef4444; color: white; }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .chat-sidebar { display: none; }
+  .company-grid { grid-template-columns: 1fr; }
+  .msg { max-width: 90%; }
+  .settings-btn { position: static; margin: 16px auto 0; }
+}
+
+.hidden { display: none !important; }
+
+.sidebar-policy {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-policy .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  margin-bottom: 6px;
+}
+
+.policy-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  margin: 2px 2px;
+  background: rgba(255,255,255,0.08);
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════ PAGE: HOME ══════════ -->
+<div id="page-home" class="home-container">
+  <div class="home-header">
+    <h1>AI Ops Assistant</h1>
+    <p>Select a company to get started</p>
+    <button class="settings-btn" onclick="openSettings()">
+      <span class="gear">&#9881;</span> API Keys
+    </button>
+  </div>
+  <div class="company-grid" id="company-grid"></div>
+</div>
+
+<!-- ══════════ PAGE: CUSTOMERS ══════════ -->
+<div id="page-customers" class="customer-page hidden">
+  <button class="back-btn" onclick="showHome()">&#8592; Back to companies</button>
+  <h2 id="cust-page-title"></h2>
+  <p class="subtitle" id="cust-page-subtitle"></p>
+  <div id="no-key-banner"></div>
+  <div class="customer-list" id="customer-list"></div>
+</div>
+
+<!-- ══════════ PAGE: CHAT ══════════ -->
+<div id="page-chat" class="chat-container hidden">
+  <aside class="chat-sidebar">
+    <div class="sidebar-header">
+      <h3 id="sidebar-company-name"></h3>
+      <p id="sidebar-company-email"></p>
+    </div>
+    <div class="sidebar-customer">
+      <div class="label">Customer</div>
+      <div class="name" id="sidebar-cust-name"></div>
+      <div class="email" id="sidebar-cust-email"></div>
+      <div class="cid" id="sidebar-cust-id"></div>
+    </div>
+    <div class="sidebar-policy" id="sidebar-policy"></div>
+    <div class="sidebar-orders" id="sidebar-orders">
+      <div class="label">Orders</div>
+    </div>
+    <div class="sidebar-back">
+      <button onclick="backToCustomers()">Switch Customer</button>
+    </div>
+  </aside>
+
+  <div class="chat-main">
+    <div class="chat-header">
+      <div class="dot" id="chat-dot"></div>
+      <h2>Support Agent</h2>
+      <button class="chat-key-btn" id="chat-key-btn" onclick="openSettings()">API Key</button>
+      <span class="thread-id" id="chat-thread-id"></span>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div id="escalation-area"></div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea id="chat-input" rows="1" placeholder="Type your message..." onkeydown="handleKey(event)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SETTINGS MODAL ══════════ -->
+<div id="settings-modal" class="modal-overlay hidden" onclick="closeSettingsOnBackdrop(event)">
+  <div class="modal">
+    <h2>API Key Settings</h2>
+    <p class="modal-subtitle">
+      Each tenant has an API key generated when it was seeded.<br>
+      Run <code>python scripts/seed_tenant.py</code> to create one &mdash; the key is printed to stdout.
+    </p>
+    <div id="modal-tenant-fields"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// DATA (from mock_data.py and policy YAML files)
+// ═══════════════════════════════════════════════════
+const COMPANIES = {
+  "megamart": {
+    name: "MegaMart",
+    uuid: "85e1ebc5-f3cd-4ac0-b966-c81dd387b326",
+    email: "support@megamart.com",
+    color: "#4f46e5",
+    icon: "M",
+    active: true,
+    policy: {
+      max_auto_refund: 10000,
+      max_refunds_30d: 3,
+      refund_always_escalate: false,
+      categories: ["electronics", "clothing", "perishables", "subscription"]
+    },
+    customers: {
+      "CUST-MM-001": { name: "Alice", email: "alice@example.com" },
+      "CUST-MM-002": { name: "Bob", email: "bob@example.com" },
+      "CUST-MM-003": { name: "Charlie", email: "charlie@example.com" },
+      "CUST-MM-004": { name: "Dave", email: "dave@example.com" },
+      "CUST-MM-005": { name: "Eve", email: "eve@example.com" },
+      "CUST-MM-006": { name: "Frank", email: "frank@example.com" }
+    },
+    orders: {
+      "CUST-MM-001": [
+        { order_id: "ORD-MM-1001", product: "Wireless Headphones", category: "electronics", amount: 4500, status: "delivered", order_date: "2026-09-10" },
+        { order_id: "ORD-MM-1005", product: "Winter Jacket", category: "clothing", amount: 3800, status: "processing", order_date: "2026-10-02" },
+        { order_id: "ORD-MM-1009", product: "Wireless Mouse + Cotton Polo", category: "electronics", amount: 5300, status: "delivered", order_date: "2026-09-18" }
+      ],
+      "CUST-MM-002": [
+        { order_id: "ORD-MM-1002", product: "Cotton T-Shirt", category: "clothing", amount: 1200, status: "delivered", order_date: "2026-09-05" },
+        { order_id: "ORD-MM-1010", product: "Laptop Stand", category: "electronics", amount: 3200, status: "delivered", order_date: "2026-07-01" }
+      ],
+      "CUST-MM-003": [
+        { order_id: "ORD-MM-1003", product: "Organic Fruit Box", category: "perishables", amount: 850, status: "delivered", order_date: "2026-09-25" }
+      ],
+      "CUST-MM-004": [
+        { order_id: "ORD-MM-1004", product: "4K OLED TV", category: "electronics", amount: 65000, status: "delivered", order_date: "2026-09-05" }
+      ],
+      "CUST-MM-005": [
+        { order_id: "ORD-MM-1006", product: "Bluetooth Speaker", category: "electronics", amount: 2500, status: "shipped", order_date: "2026-09-30" }
+      ],
+      "CUST-MM-006": [
+        { order_id: "ORD-MM-1007", product: "USB-C Hub", category: "electronics", amount: 1800, status: "pending", order_date: "2026-10-03" },
+        { order_id: "ORD-MM-1008", product: "MegaMart Plus Monthly", category: "subscription", amount: 499, status: "active", order_date: "2026-08-01" }
+      ]
+    }
+  },
+  "tiny-candles": {
+    name: "Tiny Candles",
+    uuid: "6bca840b-d249-43a2-b20f-466fdcd2e6cf",
+    email: "hello@tinycandles.in",
+    color: "#d97706",
+    icon: "T",
+    active: true,
+    policy: {
+      max_auto_refund: null,
+      max_refunds_30d: 5,
+      refund_always_escalate: true,
+      categories: ["candles", "subscription_box", "accessories"]
+    },
+    customers: {
+      "CUST-TC-001": { name: "Grace", email: "grace@example.com" },
+      "CUST-TC-002": { name: "Henry", email: "henry@example.com" },
+      "CUST-TC-003": { name: "Iris", email: "iris@example.com" },
+      "CUST-TC-004": { name: "Jack", email: "jack@example.com" }
+    },
+    orders: {
+      "CUST-TC-001": [
+        { order_id: "ORD-TC-2001", product: "Lavender Soy Candle", category: "candles", amount: 1450, status: "delivered", order_date: "2026-09-20" },
+        { order_id: "ORD-TC-2005", product: "Citrus Burst Candle", category: "candles", amount: 2100, status: "delivered", order_date: "2026-09-22" },
+        { order_id: "ORD-TC-2009", product: "Candle + Holder Set", category: "candles", amount: 2850, status: "delivered", order_date: "2026-09-24" }
+      ],
+      "CUST-TC-002": [
+        { order_id: "ORD-TC-2002", product: "Candle Gift Set", category: "candles", amount: 3200, status: "delivered", order_date: "2026-08-20" },
+        { order_id: "ORD-TC-2006", product: "Rose Petal Candle", category: "candles", amount: 1800, status: "shipped", order_date: "2026-10-01" }
+      ],
+      "CUST-TC-003": [
+        { order_id: "ORD-TC-2003", product: "Monthly Candle Box", category: "subscription_box", amount: 999, status: "active", order_date: "2026-09-20" },
+        { order_id: "ORD-TC-2007", product: "Jasmine Night Candle", category: "candles", amount: 950, status: "pending", order_date: "2026-10-04" }
+      ],
+      "CUST-TC-004": [
+        { order_id: "ORD-TC-2004", product: "Vanilla Bean Candle", category: "candles", amount: 750, status: "processing", order_date: "2026-10-03" },
+        { order_id: "ORD-TC-2008", product: "Monthly Candle Box", category: "subscription_box", amount: 999, status: "active", order_date: "2026-06-01" }
+      ]
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let currentTenant = null;
+let currentCustomerId = null;
+let jwtToken = "";
+let threadId = null;
+let sending = false;
+
+const API_BASE = "http://localhost:8000";
+
+// ─── Default API keys (set during DB seed) ───
+const DEFAULT_KEYS = {
+  "megamart": "megamart-dev-api-key-for-local-testing-only",
+  "tiny-candles": "tinycandles-dev-api-key-for-local-testing-only"
+};
+
+// ─── localStorage helpers ───
+function getSavedKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("aiops_api_keys") || "{}");
+    return { ...DEFAULT_KEYS, ...saved };
+  } catch { return { ...DEFAULT_KEYS }; }
+}
+
+function saveKeys(keys) {
+  try { localStorage.setItem("aiops_api_keys", JSON.stringify(keys)); } catch {}
+}
+
+function getKeyForTenant(tid) {
+  return getSavedKeys()[tid] || "";
+}
+
+// ═══════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════
+function showPage(id) {
+  document.getElementById("page-home").classList.add("hidden");
+  document.getElementById("page-customers").classList.add("hidden");
+  document.getElementById("page-chat").classList.add("hidden");
+  document.getElementById(id).classList.remove("hidden");
+}
+
+function showHome() {
+  currentTenant = null;
+  currentCustomerId = null;
+  jwtToken = "";
+  threadId = null;
+  showPage("page-home");
+  renderHome();
+}
+
+function backToCustomers() {
+  currentCustomerId = null;
+  jwtToken = "";
+  threadId = null;
+  showPage("page-customers");
+  renderCustomerPage();
+}
+
+// ═══════════════════════════════════════════════════
+// SETTINGS MODAL
+// ═══════════════════════════════════════════════════
+function openSettings() {
+  const fields = document.getElementById("modal-tenant-fields");
+  const saved = getSavedKeys();
+  fields.innerHTML = "";
+
+  for (const [tid, co] of Object.entries(COMPANIES)) {
+    const div = document.createElement("div");
+    div.className = "modal-tenant";
+    div.innerHTML = `
+      <label>${co.name} <span style="font-weight:400;color:var(--text-light);">(${tid})</span></label>
+      <input type="password" id="key-${tid}" value="${saved[tid] || ""}" placeholder="Paste API key..." />
+    `;
+    fields.appendChild(div);
+  }
+
+  const hint = document.createElement("p");
+  hint.className = "modal-hint";
+  hint.textContent = "Keys are saved in your browser's localStorage and never sent anywhere except to your backend.";
+  fields.appendChild(hint);
+
+  document.getElementById("settings-modal").classList.remove("hidden");
+}
+
+function closeSettings() {
+  document.getElementById("settings-modal").classList.add("hidden");
+}
+
+function closeSettingsOnBackdrop(e) {
+  if (e.target === e.currentTarget) closeSettings();
+}
+
+function saveSettings() {
+  const keys = {};
+  for (const tid of Object.keys(COMPANIES)) {
+    const input = document.getElementById(`key-${tid}`);
+    if (input && input.value.trim()) {
+      keys[tid] = input.value.trim();
+    }
+  }
+  saveKeys(keys);
+  closeSettings();
+  renderHome();
+  if (currentTenant) renderCustomerPage();
+  updateChatKeyBtn();
+}
+
+// ═══════════════════════════════════════════════════
+// HOME PAGE
+// ═══════════════════════════════════════════════════
+function renderHome() {
+  const grid = document.getElementById("company-grid");
+  const saved = getSavedKeys();
+  grid.innerHTML = "";
+
+  for (const [tid, co] of Object.entries(COMPANIES)) {
+    const custCount = Object.keys(co.customers).length;
+    let orderCount = 0;
+    for (const ords of Object.values(co.orders)) orderCount += ords.length;
+    const hasKey = !!saved[tid];
+
+    const card = document.createElement("div");
+    card.className = "company-card";
+    card.onclick = () => selectCompany(tid);
+    card.innerHTML = `
+      <span class="key-badge ${hasKey ? 'set' : 'unset'}">${hasKey ? 'API Key set' : 'No API Key'}</span>
+      <div class="company-logo" style="background:${co.color}">${co.icon}</div>
+      <h2>${co.name}</h2>
+      <div class="company-email">${co.email}</div>
+      <div class="company-meta">
+        <span>${custCount} customers</span>
+        <span>${orderCount} orders</span>
+        <span>${co.policy.categories.length} categories</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CUSTOMER PAGE
+// ═══════════════════════════════════════════════════
+function selectCompany(tenantId) {
+  currentTenant = tenantId;
+  showPage("page-customers");
+  renderCustomerPage();
+}
+
+function renderCustomerPage() {
+  const co = COMPANIES[currentTenant];
+  const hasKey = !!getKeyForTenant(currentTenant);
+
+  document.getElementById("cust-page-title").textContent = co.name;
+  document.getElementById("cust-page-subtitle").textContent = "Select a customer to start a support conversation";
+
+  const banner = document.getElementById("no-key-banner");
+  if (!hasKey) {
+    banner.innerHTML = `
+      <div class="no-key-warning">
+        <span>No API key set for ${co.name}. Chat won't connect to the backend without it.</span>
+        <button onclick="openSettings()">Set API Key</button>
+      </div>
+    `;
+  } else {
+    banner.innerHTML = "";
+  }
+
+  const list = document.getElementById("customer-list");
+  list.innerHTML = "";
+
+  for (const [cid, cust] of Object.entries(co.customers)) {
+    const orders = co.orders[cid] || [];
+    const item = document.createElement("div");
+    item.className = "customer-item";
+    item.onclick = () => selectCustomer(cid);
+    item.innerHTML = `
+      <div class="customer-info">
+        <h3>${cust.name}</h3>
+        <div class="cust-email">${cust.email}</div>
+        <div class="cust-id">${cid}</div>
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span class="customer-orders-badge">${orders.length} order${orders.length !== 1 ? 's' : ''}</span>
+        <span class="arrow-icon">&#8594;</span>
+      </div>
+    `;
+    list.appendChild(item);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CHAT PAGE
+// ═══════════════════════════════════════════════════
+function updateChatKeyBtn() {
+  const btn = document.getElementById("chat-key-btn");
+  const dot = document.getElementById("chat-dot");
+  if (!currentTenant) return;
+  const hasKey = !!getKeyForTenant(currentTenant);
+  btn.className = hasKey ? "chat-key-btn has-key" : "chat-key-btn";
+  btn.textContent = hasKey ? "Key set" : "Set API Key";
+  dot.style.background = hasKey ? "var(--success)" : "var(--warning)";
+}
+
+async function selectCustomer(custId) {
+  currentCustomerId = custId;
+  threadId = null;
+  jwtToken = "";
+
+  const co = COMPANIES[currentTenant];
+  const cust = co.customers[custId];
+  const apiKey = getKeyForTenant(currentTenant);
+
+  showPage("page-chat");
+  renderChatSidebar();
+  document.getElementById("chat-messages").innerHTML = "";
+  document.getElementById("escalation-area").innerHTML = "";
+  document.getElementById("chat-thread-id").textContent = "";
+  updateChatKeyBtn();
+  document.getElementById("chat-input").focus();
+
+  if (!apiKey) {
+    addMessage("bot", `Hello ${cust.name}! I'm your AI support assistant for ${co.name}.\n\nTo start chatting, set the API key for this tenant using the "Set API Key" button above, or the settings on the home page.`);
+    return;
+  }
+
+  // Mint a JWT via /dev/token
+  try {
+    const resp = await fetch(`${API_BASE}/dev/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: co.uuid,
+        customer_id: custId,
+        expires_minutes: 60
+      })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      jwtToken = data.token;
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      addMessage("system", `Could not mint token: ${err.detail || resp.statusText}. Chat may not work.`);
+    }
+  } catch (e) {
+    addMessage("system", `Backend unreachable at ${API_BASE}. Make sure the FastAPI server is running.`);
+  }
+
+  addMessage("bot", `Hello ${cust.name}! I'm your AI support assistant for ${co.name}. How can I help you today?`);
+}
+
+function renderChatSidebar() {
+  const co = COMPANIES[currentTenant];
+  const cust = co.customers[currentCustomerId];
+  const orders = co.orders[currentCustomerId] || [];
+
+  document.getElementById("sidebar-company-name").textContent = co.name;
+  document.getElementById("sidebar-company-email").textContent = co.email;
+  document.getElementById("sidebar-cust-name").textContent = cust.name;
+  document.getElementById("sidebar-cust-email").textContent = cust.email;
+  document.getElementById("sidebar-cust-id").textContent = currentCustomerId;
+
+  const pol = co.policy;
+  const polDiv = document.getElementById("sidebar-policy");
+  polDiv.innerHTML = `
+    <div class="label">Policy</div>
+    <div>
+      <span class="policy-chip">Max refund: ${pol.max_auto_refund ? '₹' + pol.max_auto_refund.toLocaleString() : 'Always escalate'}</span>
+      <span class="policy-chip">30d limit: ${pol.max_refunds_30d}</span>
+      ${pol.refund_always_escalate ? '<span class="policy-chip" style="color:#fcd34d;">Escalate all</span>' : ''}
+    </div>
+  `;
+
+  const ordersDiv = document.getElementById("sidebar-orders");
+  ordersDiv.innerHTML = '<div class="label">Orders</div>';
+  if (orders.length === 0) {
+    ordersDiv.innerHTML += '<div style="padding:10px;opacity:0.4;font-size:0.82rem;">No orders</div>';
+    return;
+  }
+  for (const o of orders) {
+    const el = document.createElement("div");
+    el.className = "sidebar-order-item";
+    el.innerHTML = `
+      <div class="oid">${o.order_id}</div>
+      <div class="product">${o.product}</div>
+      <div class="meta">
+        <span>₹${o.amount.toLocaleString()}</span>
+        <span class="order-status ${o.status}">${o.status}</span>
+      </div>
+    `;
+    ordersDiv.appendChild(el);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CHAT MESSAGING
+// ═══════════════════════════════════════════════════
+function addMessage(type, text) {
+  const container = document.getElementById("chat-messages");
+  const div = document.createElement("div");
+  div.className = `msg ${type}`;
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function showTyping() {
+  const container = document.getElementById("chat-messages");
+  const div = document.createElement("div");
+  div.className = "typing-indicator";
+  div.id = "typing";
+  div.innerHTML = "<span></span><span></span><span></span>";
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById("typing");
+  if (el) el.remove();
+}
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+async function sendMessage() {
+  const input = document.getElementById("chat-input");
+  const text = input.value.trim();
+  if (!text || sending) return;
+
+  const apiKey = getKeyForTenant(currentTenant);
+  if (!apiKey) {
+    addMessage("system", "Set the API key first (click 'Set API Key' in the header or use settings on the home page).");
+    return;
+  }
+
+  sending = true;
+  document.getElementById("send-btn").disabled = true;
+  input.value = "";
+
+  addMessage("user", text);
+  showTyping();
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey
+    };
+    if (jwtToken) {
+      headers["Authorization"] = `Bearer ${jwtToken}`;
+    }
+
+    const body = { message: text };
+    if (threadId) body.thread_id = threadId;
+
+    const resp = await fetch(`${API_BASE}/agent`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body)
+    });
+
+    hideTyping();
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      addMessage("error", `Error ${resp.status}: ${err.detail || resp.statusText}`);
+      return;
+    }
+
+    const data = await resp.json();
+
+    if (data.thread_id && !threadId) {
+      threadId = data.thread_id;
+      document.getElementById("chat-thread-id").textContent = `Thread: ${threadId.substring(0, 12)}...`;
+    }
+
+    if (data.response) {
+      addMessage("bot", data.response);
+    }
+
+    if (data.status === "interrupted" && data.escalations) {
+      renderEscalations(data.escalations);
+    }
+
+  } catch (e) {
+    hideTyping();
+    addMessage("error", `Network error: ${e.message}. Is the backend running?`);
+  } finally {
+    sending = false;
+    document.getElementById("send-btn").disabled = false;
+    input.focus();
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// ESCALATIONS (HITL)
+// ═══════════════════════════════════════════════════
+function renderEscalations(escalations) {
+  const area = document.getElementById("escalation-area");
+  area.innerHTML = "";
+  if (!escalations || escalations.length === 0) return;
+
+  const banner = document.createElement("div");
+  banner.className = "escalation-banner";
+  banner.innerHTML = "<h4>Escalations Requiring Human Review</h4>";
+
+  escalations.forEach((esc, idx) => {
+    const item = document.createElement("div");
+    item.className = "escalation-item";
+    item.id = `esc-${idx}`;
+    const reason = esc.reason || esc.intent || "Action requires approval";
+    const details = esc.details || esc.action_summary || "";
+    item.innerHTML = `
+      <p><strong>#${idx + 1}:</strong> ${reason}</p>
+      ${details ? `<p style="font-size:0.8rem;color:#6b7280;">${details}</p>` : ""}
+      <div class="escalation-actions">
+        <button class="approve" onclick="resolveEscalation(${idx}, 'approve')">Approve</button>
+        <button class="deny" onclick="resolveEscalation(${idx}, 'deny')">Deny</button>
+      </div>
+    `;
+    banner.appendChild(item);
+  });
+  area.appendChild(banner);
+}
+
+async function resolveEscalation(index, action) {
+  if (!threadId) return;
+  const apiKey = getKeyForTenant(currentTenant);
+  const btn = document.querySelector(`#esc-${index} .${action}`);
+  if (btn) btn.textContent = "...";
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      "X-API-Key": apiKey
+    };
+    if (jwtToken) {
+      headers["Authorization"] = `Bearer ${jwtToken}`;
+    }
+
+    const resp = await fetch(`${API_BASE}/agent/resume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        thread_id: threadId,
+        decisions: [{ index, action }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      addMessage("error", `Escalation error: ${err.detail || resp.statusText}`);
+      return;
+    }
+
+    const data = await resp.json();
+    document.getElementById("escalation-area").innerHTML = "";
+
+    if (data.response) {
+      addMessage("bot", data.response);
+    } else {
+      addMessage("system", `Escalation #${index + 1} ${action}d.`);
+    }
+  } catch (e) {
+    addMessage("error", `Network error: ${e.message}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+  renderHome();
+  const textarea = document.getElementById("chat-input");
+  textarea.addEventListener("input", () => {
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+  });
+});
+</script>
+</body>
+</html>

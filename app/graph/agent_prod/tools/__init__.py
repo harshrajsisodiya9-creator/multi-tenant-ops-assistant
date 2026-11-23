@@ -2,11 +2,11 @@ from app.graph.agent_prod.tools.order_tools import (
     cancel_order,
     get_order_details,
     get_order_tracking,
-    get_orders_by_email,
     get_return_eligibility,
     get_shipping_label,
     initiate_refund,
     initiate_return,
+    list_my_orders,
 )
 
 TOOL_REGISTRY: dict[str, callable] = {
@@ -17,7 +17,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "get_shipping_label": get_shipping_label,
     "cancel_order": cancel_order,
     "get_order_tracking": get_order_tracking,
-    "get_orders_by_email": get_orders_by_email,
+    "list_my_orders": list_my_orders,
 }
 
 TOOL_DESCRIPTIONS: list[dict] = [
@@ -57,8 +57,8 @@ TOOL_DESCRIPTIONS: list[dict] = [
         "parameters": ["order_id"],
     },
     {
-        "name": "get_orders_by_email",
-        "description": "List all orders for a customer by their email address.",
-        "parameters": ["customer_email"],
+        "name": "list_my_orders",
+        "description": "List all orders for the current customer.",
+        "parameters": [],
     },
 ]

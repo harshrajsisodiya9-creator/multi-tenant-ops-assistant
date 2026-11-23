@@ -9,23 +9,25 @@ from app.graph.nodes.intent_executor import (
     _execute_cancel,
     _execute_order_status,
     _execute_refund,
-    intent_executor_node,
+    bail_executor_node,
+    merge_results_node,
+    simple_executor_node,
 )
 
 
 class TestExecuteOrderStatus:
     def test_found_delivered(self):
-        result = _execute_order_status("megamart", {"order_id": "ORD-MM-1001"})
+        result = _execute_order_status("megamart", "CUST-MM-001", {"order_id": "ORD-MM-1001"})
         assert "ORD-MM-1001" in result
         assert "delivered" in result
         assert "Wireless Headphones" in result
 
     def test_found_processing(self):
-        result = _execute_order_status("megamart", {"order_id": "ORD-MM-1005"})
+        result = _execute_order_status("megamart", "CUST-MM-001", {"order_id": "ORD-MM-1005"})
         assert "processing" in result
 
     def test_not_found(self):
-        result = _execute_order_status("megamart", {"order_id": "ORD-FAKE"})
+        result = _execute_order_status("megamart", "CUST-MM-001", {"order_id": "ORD-FAKE"})
         assert "couldn't find" in result
 
 
@@ -33,6 +35,7 @@ class TestExecuteRefund:
     def test_refund_with_constraints(self):
         result = _execute_refund(
             "megamart",
+            "CUST-MM-001",
             {"order_id": "ORD-MM-1001"},
             {"refund_type": "original_method", "condition": "unopened"},
         )
@@ -43,6 +46,7 @@ class TestExecuteRefund:
     def test_refund_no_condition(self):
         result = _execute_refund(
             "megamart",
+            "CUST-MM-002",
             {"order_id": "ORD-MM-1002"},
             {"refund_type": "original_method", "condition": "any"},
         )
@@ -52,12 +56,12 @@ class TestExecuteRefund:
 
 class TestExecuteCancel:
     def test_cancel_found(self):
-        result = _execute_cancel("megamart", {"order_id": "ORD-MM-1007"})
+        result = _execute_cancel("megamart", "CUST-MM-006", {"order_id": "ORD-MM-1007"})
         assert "cancelled" in result
         assert "USB-C Hub" in result
 
     def test_cancel_not_found(self):
-        result = _execute_cancel("megamart", {"order_id": "ORD-FAKE"})
+        result = _execute_cancel("megamart", "CUST-MM-001", {"order_id": "ORD-FAKE"})
         assert "initiated" in result
 
 
@@ -95,134 +99,153 @@ class TestClarifyContext:
         assert "order number" in msg.lower()
 
 
-class TestIntentExecutorNode:
-    def test_single_allow_order_status(self):
+class TestSimpleExecutorNode:
+    def test_allow_order_status(self):
         state = {
             "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "user_message": "Where is ORD-MM-1001?",
-            "intent_results": [
-                {
-                    "intent": "order_status",
-                    "entities": {"order_id": "ORD-MM-1001"},
-                    "policy_action": "allow",
-                    "reason_code": "ORDER_STATUS_ALLOWED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
-                }
-            ],
+            "current_intent": {
+                "intent": "order_status",
+                "entities": {"order_id": "ORD-MM-1001"},
+                "policy_action": "allow",
+                "reason_code": "ORDER_STATUS_ALLOWED",
+                "constraints": {},
+                "domain_result": "",
+                "status": "pending",
+            },
         }
-        result = intent_executor_node(state)
-        assert result["intent_results"][0]["status"] == "fulfilled"
-        assert "ORD-MM-1001" in result["intent_results"][0]["domain_result"]
-        assert result["response_phase"] == "complete"
+        result = simple_executor_node(state)
+        assert len(result["processed_results"]) == 1
+        r = result["processed_results"][0]
+        assert r["status"] == "fulfilled"
+        assert "ORD-MM-1001" in r["domain_result"]
 
-    def test_single_block(self):
+    def test_block(self):
         state = {
             "tenant_id": "megamart",
             "user_message": "return perishables",
-            "intent_results": [
-                {
-                    "intent": "refund",
-                    "entities": {"order_id": "ORD-MM-1003"},
-                    "policy_action": "block",
-                    "reason_code": "RETURNS_NOT_ALLOWED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
-                }
-            ],
+            "current_intent": {
+                "intent": "refund",
+                "entities": {"order_id": "ORD-MM-1003"},
+                "policy_action": "block",
+                "reason_code": "RETURNS_NOT_ALLOWED",
+                "constraints": {},
+                "domain_result": "",
+                "status": "pending",
+            },
         }
-        result = intent_executor_node(state)
-        assert result["intent_results"][0]["status"] == "blocked"
-        assert result["response_phase"] == "complete"
+        result = simple_executor_node(state)
+        assert result["processed_results"][0]["status"] == "blocked"
 
-    def test_single_escalate_sets_awaiting_human(self):
+    def test_escalate(self):
         state = {
             "tenant_id": "tiny-candles",
             "user_message": "refund ORD-TC-2001",
-            "intent_results": [
-                {
-                    "intent": "refund",
-                    "entities": {"order_id": "ORD-TC-2001"},
-                    "policy_action": "escalate",
-                    "reason_code": "TENANT_REFUND_REVIEW_REQUIRED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
-                }
-            ],
+            "current_intent": {
+                "intent": "refund",
+                "entities": {"order_id": "ORD-TC-2001"},
+                "policy_action": "escalate",
+                "reason_code": "TENANT_REFUND_REVIEW_REQUIRED",
+                "constraints": {},
+                "domain_result": "",
+                "status": "pending",
+            },
         }
-        result = intent_executor_node(state)
-        assert result["intent_results"][0]["status"] == "awaiting_human"
-        assert result["response_phase"] == "partial"
+        result = simple_executor_node(state)
+        assert result["processed_results"][0]["status"] == "awaiting_human"
 
-    def test_single_clarify(self):
+    def test_clarify(self):
         state = {
             "tenant_id": "megamart",
             "user_message": "help with something",
-            "intent_results": [
-                {
-                    "intent": "refund",
-                    "entities": {},
-                    "policy_action": "clarify",
-                    "reason_code": "VERIFICATION_REQUIRED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
-                }
-            ],
+            "current_intent": {
+                "intent": "refund",
+                "entities": {},
+                "policy_action": "clarify",
+                "reason_code": "VERIFICATION_REQUIRED",
+                "constraints": {},
+                "domain_result": "",
+                "status": "pending",
+            },
         }
-        result = intent_executor_node(state)
-        assert result["intent_results"][0]["status"] == "needs_clarification"
-        assert result["response_phase"] == "complete"
+        result = simple_executor_node(state)
+        assert result["processed_results"][0]["status"] == "needs_clarification"
 
+
+class TestMergeResultsNode:
     def test_mixed_allow_and_escalate(self):
         state = {
-            "tenant_id": "tiny-candles",
-            "user_message": "check order and refund",
-            "intent_results": [
+            "processed_results": [
                 {
                     "intent": "order_status",
-                    "entities": {"order_id": "ORD-TC-2001"},
-                    "policy_action": "allow",
-                    "reason_code": "ORDER_STATUS_ALLOWED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
+                    "status": "fulfilled",
+                    "domain_result": "Order status info",
                 },
                 {
                     "intent": "refund",
-                    "entities": {"order_id": "ORD-TC-2001"},
-                    "policy_action": "escalate",
-                    "reason_code": "TENANT_REFUND_REVIEW_REQUIRED",
-                    "constraints": {},
-                    "domain_result": "",
-                    "status": "pending",
+                    "status": "awaiting_human",
+                    "domain_result": "Escalated",
                 },
             ],
         }
-        result = intent_executor_node(state)
+        result = merge_results_node(state)
         assert result["intent_results"][0]["status"] == "fulfilled"
         assert result["intent_results"][1]["status"] == "awaiting_human"
         assert result["response_phase"] == "partial"
 
-    def test_skips_non_pending(self):
+    def test_all_fulfilled(self):
         state = {
-            "tenant_id": "megamart",
-            "user_message": "check order",
+            "processed_results": [
+                {"intent": "order_status", "status": "fulfilled", "domain_result": "done"},
+            ],
+        }
+        result = merge_results_node(state)
+        assert result["response_phase"] == "complete"
+        assert result["has_tool_calls"] is False
+
+    def test_has_tool_calls(self):
+        state = {
+            "processed_results": [
+                {"intent": "refund", "status": "fulfilled", "tool_calls": [{"tool": "initiate_refund"}]},
+            ],
+        }
+        result = merge_results_node(state)
+        assert result["has_tool_calls"] is True
+
+
+class TestBailExecutorNode:
+    def test_bail_block(self):
+        state = {
+            "intent_results": [
+                {
+                    "intent": "refund",
+                    "entities": {},
+                    "policy_action": "block",
+                    "reason_code": "TENANT_INACTIVE",
+                    "constraints": {},
+                    "status": "pending",
+                }
+            ],
+        }
+        result = bail_executor_node(state)
+        assert result["intent_results"][0]["status"] == "blocked"
+        assert result["response_phase"] == "complete"
+        assert result["has_tool_calls"] is False
+
+    def test_bail_skips_non_pending(self):
+        state = {
             "intent_results": [
                 {
                     "intent": "order_status",
-                    "entities": {"order_id": "ORD-MM-1001"},
+                    "entities": {},
                     "policy_action": "allow",
-                    "reason_code": "ORDER_STATUS_ALLOWED",
+                    "reason_code": "OK",
                     "constraints": {},
                     "domain_result": "Already done",
                     "status": "fulfilled",
                 }
             ],
         }
-        result = intent_executor_node(state)
+        result = bail_executor_node(state)
         assert result["intent_results"][0]["domain_result"] == "Already done"
-        assert result["response_phase"] == "complete"

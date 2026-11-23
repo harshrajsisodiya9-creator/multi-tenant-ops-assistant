@@ -5,16 +5,41 @@ import pytest
 from app.graph.nodes.action_check import action_check_node
 
 
-class TestRefundChecks:
-    def test_refund_within_ceiling_passes(self):
+class TestAuditFlags:
+    def test_near_ceiling_flagged(self):
         state = {
             "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "intent_results": [
                 {
                     "intent": "refund",
                     "status": "fulfilled",
                     "domain_result": "Refund processed.",
-                    "reason_code": "REFUND_ALLOWED",
+                    "entities": {"order_id": "ORD-MM-1004"},
+                    "tool_calls": [
+                        {
+                            "tool": "initiate_refund",
+                            "args": {"order_id": "ORD-MM-1004", "amount": 45000},
+                        }
+                    ],
+                }
+            ],
+        }
+        result = action_check_node(state)
+        r = result["intent_results"][0]
+        assert r["status"] == "fulfilled"
+        assert any(f["flag"] == "NEAR_CEILING" for f in r.get("audit_flags", []))
+
+    def test_below_threshold_no_flag(self):
+        state = {
+            "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
+            "intent_results": [
+                {
+                    "intent": "refund",
+                    "status": "fulfilled",
+                    "domain_result": "Refund processed.",
+                    "entities": {"order_id": "ORD-MM-1001"},
                     "tool_calls": [
                         {
                             "tool": "initiate_refund",
@@ -25,154 +50,75 @@ class TestRefundChecks:
             ],
         }
         result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "fulfilled"
+        r = result["intent_results"][0]
+        assert r["status"] == "fulfilled"
+        assert "audit_flags" not in r
 
-    def test_refund_exceeds_global_ceiling_blocked(self):
+    def test_multi_write_flagged(self):
         state = {
             "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "intent_results": [
                 {
                     "intent": "refund",
                     "status": "fulfilled",
-                    "domain_result": "Refund processed.",
-                    "reason_code": "REFUND_ALLOWED",
+                    "domain_result": "Done.",
+                    "entities": {"order_id": "ORD-MM-1001"},
                     "tool_calls": [
                         {
                             "tool": "initiate_refund",
-                            "args": {"order_id": "ORD-MM-1004", "amount": 55000},
-                        }
-                    ],
-                }
-            ],
-        }
-        result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "blocked"
-        assert "ceiling" in result["intent_results"][0]["domain_result"].lower()
-        assert result["intent_results"][0]["reason_code"] == "ACTION_CHECK_VIOLATION"
-
-    def test_refund_exceeds_order_total_blocked(self):
-        state = {
-            "tenant_id": "megamart",
-            "intent_results": [
-                {
-                    "intent": "refund",
-                    "status": "fulfilled",
-                    "domain_result": "Refund processed.",
-                    "reason_code": "REFUND_ALLOWED",
-                    "tool_calls": [
-                        {
-                            "tool": "initiate_refund",
-                            "args": {"order_id": "ORD-MM-1001", "amount": 9999},
-                        }
-                    ],
-                }
-            ],
-        }
-        result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "blocked"
-        assert "order total" in result["intent_results"][0]["domain_result"].lower()
-
-
-class TestCancelChecks:
-    def test_cancel_pending_passes(self):
-        state = {
-            "tenant_id": "megamart",
-            "intent_results": [
-                {
-                    "intent": "cancel_order",
-                    "status": "fulfilled",
-                    "domain_result": "Order cancelled.",
-                    "reason_code": "CANCEL_ALLOWED",
-                    "tool_calls": [
+                            "args": {"order_id": "ORD-MM-1001", "amount": 1000},
+                        },
                         {
                             "tool": "cancel_order",
-                            "args": {"order_id": "ORD-MM-1007"},
-                        }
+                            "args": {"order_id": "ORD-MM-1001"},
+                        },
                     ],
                 }
             ],
         }
         result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "fulfilled"
+        r = result["intent_results"][0]
+        assert any(f["flag"] == "MULTI_WRITE" for f in r.get("audit_flags", []))
 
-    def test_cancel_shipped_blocked(self):
+    def test_blocked_tool_calls_not_audited(self):
         state = {
             "tenant_id": "megamart",
-            "intent_results": [
-                {
-                    "intent": "cancel_order",
-                    "status": "fulfilled",
-                    "domain_result": "Order cancelled.",
-                    "reason_code": "CANCEL_ALLOWED",
-                    "tool_calls": [
-                        {
-                            "tool": "cancel_order",
-                            "args": {"order_id": "ORD-MM-1006"},
-                        }
-                    ],
-                }
-            ],
-        }
-        result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "blocked"
-        assert "not cancellable" in result["intent_results"][0]["domain_result"].lower()
-
-    def test_cancel_unknown_order_passes(self):
-        state = {
-            "tenant_id": "megamart",
-            "intent_results": [
-                {
-                    "intent": "cancel_order",
-                    "status": "fulfilled",
-                    "domain_result": "Cancelled.",
-                    "reason_code": "CANCEL_ALLOWED",
-                    "tool_calls": [
-                        {
-                            "tool": "cancel_order",
-                            "args": {"order_id": "ORD-UNKNOWN"},
-                        }
-                    ],
-                }
-            ],
-        }
-        result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "fulfilled"
-
-
-class TestEdgeCases:
-    def test_no_tool_calls_passes(self):
-        state = {
-            "tenant_id": "megamart",
-            "intent_results": [
-                {
-                    "intent": "faq",
-                    "status": "fulfilled",
-                    "domain_result": "FAQ answer.",
-                    "reason_code": "FAQ_ALLOWED",
-                    "tool_calls": [],
-                }
-            ],
-        }
-        result = action_check_node(state)
-        assert result["intent_results"][0]["status"] == "fulfilled"
-
-    def test_blocked_tool_calls_skipped(self):
-        state = {
-            "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "intent_results": [
                 {
                     "intent": "refund",
                     "status": "fulfilled",
                     "domain_result": "Refund.",
-                    "reason_code": "REFUND_ALLOWED",
+                    "entities": {"order_id": "ORD-MM-1004"},
                     "tool_calls": [
                         {
                             "tool": "initiate_refund",
                             "args": {"order_id": "ORD-MM-1004", "amount": 55000},
                             "blocked": True,
-                            "reason": "already blocked",
+                            "reason": "already blocked in-loop",
                         }
                     ],
+                }
+            ],
+        }
+        result = action_check_node(state)
+        r = result["intent_results"][0]
+        assert r["status"] == "fulfilled"
+        assert "audit_flags" not in r
+
+
+class TestPassthrough:
+    def test_no_tool_calls_passes(self):
+        state = {
+            "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
+            "intent_results": [
+                {
+                    "intent": "faq",
+                    "status": "fulfilled",
+                    "domain_result": "FAQ answer.",
+                    "tool_calls": [],
                 }
             ],
         }
@@ -182,12 +128,12 @@ class TestEdgeCases:
     def test_non_fulfilled_skipped(self):
         state = {
             "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "intent_results": [
                 {
                     "intent": "refund",
                     "status": "awaiting_human",
                     "domain_result": "",
-                    "reason_code": "ESCALATED",
                     "tool_calls": [
                         {
                             "tool": "initiate_refund",
@@ -200,26 +146,50 @@ class TestEdgeCases:
         result = action_check_node(state)
         assert result["intent_results"][0]["status"] == "awaiting_human"
 
-    def test_multiple_intents_one_violation(self):
+    def test_cancel_no_flags_when_clean(self):
         state = {
             "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
+            "intent_results": [
+                {
+                    "intent": "cancel_order",
+                    "status": "fulfilled",
+                    "domain_result": "Order cancelled.",
+                    "entities": {"order_id": "ORD-MM-1007"},
+                    "tool_calls": [
+                        {
+                            "tool": "cancel_order",
+                            "args": {"order_id": "ORD-MM-1007"},
+                        }
+                    ],
+                }
+            ],
+        }
+        result = action_check_node(state)
+        r = result["intent_results"][0]
+        assert r["status"] == "fulfilled"
+        assert "audit_flags" not in r
+
+    def test_multiple_intents_flags_only_on_flagged(self):
+        state = {
+            "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
             "intent_results": [
                 {
                     "intent": "order_status",
                     "status": "fulfilled",
                     "domain_result": "Order info.",
-                    "reason_code": "ORDER_STATUS_ALLOWED",
                     "tool_calls": [],
                 },
                 {
                     "intent": "refund",
                     "status": "fulfilled",
                     "domain_result": "Refund.",
-                    "reason_code": "REFUND_ALLOWED",
+                    "entities": {"order_id": "ORD-MM-1001"},
                     "tool_calls": [
                         {
                             "tool": "initiate_refund",
-                            "args": {"order_id": "ORD-MM-1001", "amount": 99999},
+                            "args": {"order_id": "ORD-MM-1001", "amount": 45000},
                         }
                     ],
                 },
@@ -227,4 +197,31 @@ class TestEdgeCases:
         }
         result = action_check_node(state)
         assert result["intent_results"][0]["status"] == "fulfilled"
-        assert result["intent_results"][1]["status"] == "blocked"
+        assert "audit_flags" not in result["intent_results"][0]
+        assert result["intent_results"][1]["status"] == "fulfilled"
+        assert any(f["flag"] == "NEAR_CEILING" for f in result["intent_results"][1].get("audit_flags", []))
+
+
+class TestVerifySkippedInMock:
+    def test_no_verification_in_mock_mode(self):
+        state = {
+            "tenant_id": "megamart",
+            "customer_id": "CUST-MM-001",
+            "intent_results": [
+                {
+                    "intent": "refund",
+                    "status": "fulfilled",
+                    "domain_result": "Refund processed.",
+                    "entities": {"order_id": "ORD-MM-1001"},
+                    "tool_calls": [
+                        {
+                            "tool": "initiate_refund",
+                            "args": {"order_id": "ORD-MM-1001", "amount": 4500},
+                        }
+                    ],
+                }
+            ],
+        }
+        result = action_check_node(state)
+        tc = result["intent_results"][0]["tool_calls"][0]
+        assert "verification" not in tc

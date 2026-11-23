@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from app.graph.agent_factory import get_react_agent
-from app.graph.mock_data import get_order
+from app.graph.data_access import get_order_scoped
 from app.graph.state import AgentState
 
 
-def _execute_order_status(tenant_id: str, entities: dict) -> str:
+def _execute_order_status(tenant_id: str, customer_id: str, entities: dict) -> str:
     order_id = entities.get("order_id", "")
-    order = get_order(tenant_id, order_id)
+    order = get_order_scoped(tenant_id, customer_id, order_id)
     if not order:
         return f"I couldn't find order {order_id} in our system."
     status = order.get("status", "unknown")
@@ -18,9 +18,9 @@ def _execute_order_status(tenant_id: str, entities: dict) -> str:
     return f"Order {order_id} ({product}) status: {status}."
 
 
-def _execute_refund(tenant_id: str, entities: dict, constraints: dict) -> str:
+def _execute_refund(tenant_id: str, customer_id: str, entities: dict, constraints: dict) -> str:
     order_id = entities.get("order_id", "")
-    order = get_order(tenant_id, order_id)
+    order = get_order_scoped(tenant_id, customer_id, order_id)
     if not order:
         return f"Refund initiated for order {order_id}."
     product = order.get("product", "your item")
@@ -34,9 +34,9 @@ def _execute_refund(tenant_id: str, entities: dict, constraints: dict) -> str:
     return result
 
 
-def _execute_cancel(tenant_id: str, entities: dict) -> str:
+def _execute_cancel(tenant_id: str, customer_id: str, entities: dict) -> str:
     order_id = entities.get("order_id", "")
-    order = get_order(tenant_id, order_id)
+    order = get_order_scoped(tenant_id, customer_id, order_id)
     if not order:
         return f"Cancellation initiated for order {order_id}."
     product = order.get("product", "your item")
@@ -65,21 +65,35 @@ def _execute_faq(tenant_id: str, question: str) -> str:
 
 def _run_react_agent(
     tenant_id: str,
+    customer_id: str | None,
     intent: str,
     entities: dict,
     constraints: dict,
     user_message: str,
-) -> tuple[str, list[dict]]:
+) -> dict:
     run_react_agent = get_react_agent()
     order_id = entities.get("order_id", "")
-    agent_result = run_react_agent(
-        tenant_id=tenant_id,
-        order_id=order_id,
-        user_message=user_message,
-        intent=intent,
-        constraints=constraints,
-    )
-    return agent_result["result"], agent_result.get("tool_calls", [])
+
+    from app.config import setting
+    if setting.agent_mode == "prod":
+        from app.graph.agent_prod.tool_context import ToolContext
+        ctx = ToolContext(tenant_id=tenant_id, customer_id=customer_id or "")
+        agent_result = run_react_agent(
+            ctx=ctx,
+            order_id=order_id,
+            user_message=user_message,
+            intent=intent,
+            constraints=constraints,
+        )
+    else:
+        agent_result = run_react_agent(
+            tenant_id=tenant_id,
+            order_id=order_id,
+            user_message=user_message,
+            intent=intent,
+            constraints=constraints,
+        )
+    return agent_result
 
 
 def _build_block_context(reason_code: str, entities: dict) -> str:
@@ -147,52 +161,132 @@ CONVERSATIONAL_RESPONSES = {
 AGENT_INTENTS = {"refund", "cancel_order"}
 
 
-def intent_executor_node(state: AgentState) -> dict:
-    intent_results: list[dict] = list(state.get("intent_results") or [])
+# ---------------------------------------------------------------------------
+# Send()-targeted executor nodes
+# ---------------------------------------------------------------------------
+
+def agent_executor_node(state: AgentState) -> dict:
+    """Handles allow + refund/cancel_order via the react agent subgraph."""
+    result = dict(state["current_intent"])
+    tenant_id = state["tenant_id"]
+    customer_id = state.get("customer_id")
+    user_message = state["user_message"]
+    entities = result.get("entities", {})
+    constraints = result.get("constraints", {})
+
+    agent_out = _run_react_agent(
+        tenant_id, customer_id, result["intent"],
+        entities, constraints, user_message,
+    )
+    result["tool_calls"] = agent_out.get("tool_calls", [])
+
+    if agent_out.get("pending_approval"):
+        pending = agent_out["pending_approval"]
+        result["pending_tool_call"] = pending
+        result["domain_result"] = (
+            f"Action '{pending['tool']}' with args {pending['args']} "
+            f"requires human approval ({', '.join(pending['reasons'])})."
+        )
+        result["reason_code"] = pending["reasons"][0]
+        result["status"] = "awaiting_human"
+    else:
+        result["domain_result"] = agent_out["result"]
+        result["status"] = "fulfilled"
+
+    return {"processed_results": [result]}
+
+
+def faq_executor_node(state: AgentState) -> dict:
+    """Handles allow + faq/complaint via RAG hybrid search."""
+    result = dict(state["current_intent"])
     tenant_id = state["tenant_id"]
     user_message = state["user_message"]
-    has_escalations = False
+
+    result["domain_result"] = _execute_faq(tenant_id, user_message)
+    result["status"] = "fulfilled"
+    return {"processed_results": [result]}
+
+
+def simple_executor_node(state: AgentState) -> dict:
+    """Handles conversational, order_status, block, escalate, clarify intents."""
+    result = dict(state["current_intent"])
+    tenant_id = state["tenant_id"]
+    customer_id = state.get("customer_id")
+    entities = result.get("entities", {})
+    constraints = result.get("constraints", {})
+    action = result["policy_action"]
+    intent = result["intent"]
+
+    if action == "allow":
+        if intent in CONVERSATIONAL_INTENTS:
+            result["domain_result"] = CONVERSATIONAL_RESPONSES[intent]
+        elif intent == "order_status":
+            result["domain_result"] = _execute_order_status(
+                tenant_id, customer_id or "", entities,
+            )
+        result["status"] = "fulfilled"
+
+    elif action == "block":
+        result["domain_result"] = _build_block_context(result["reason_code"], entities)
+        result["status"] = "blocked"
+
+    elif action == "escalate":
+        result["domain_result"] = _build_escalation_context(result["reason_code"], entities)
+        result["status"] = "awaiting_human"
+
+    elif action == "clarify":
+        result["domain_result"] = _build_clarify_context(result["reason_code"], constraints)
+        result["status"] = "needs_clarification"
+
+    return {"processed_results": [result]}
+
+
+def bail_executor_node(state: AgentState) -> dict:
+    """Handles pre_check bail results (block/clarify from tenant-inactive or low-confidence)."""
+    intent_results = list(state.get("intent_results") or [])
 
     for result in intent_results:
         if result.get("status") != "pending":
             continue
-
-        action = result["policy_action"]
-        intent = result["intent"]
+        action = result.get("policy_action", "block")
         entities = result.get("entities", {})
         constraints = result.get("constraints", {})
 
-        if action == "allow":
-            if intent in CONVERSATIONAL_INTENTS:
-                result["domain_result"] = CONVERSATIONAL_RESPONSES[intent]
-            elif intent in ("faq", "complaint"):
-                result["domain_result"] = _execute_faq(tenant_id, user_message)
-            elif intent == "order_status":
-                result["domain_result"] = _execute_order_status(tenant_id, entities)
-            elif intent in AGENT_INTENTS:
-                domain_result, tool_calls = _run_react_agent(
-                    tenant_id, intent, entities, constraints, user_message,
-                )
-                result["domain_result"] = domain_result
-                result["tool_calls"] = tool_calls
-            result["status"] = "fulfilled"
-
-        elif action == "block":
-            result["domain_result"] = _build_block_context(result["reason_code"], entities)
+        if action == "block":
+            result["domain_result"] = _build_block_context(
+                result.get("reason_code", "TENANT_INACTIVE"), entities,
+            )
             result["status"] = "blocked"
-
-        elif action == "escalate":
-            result["domain_result"] = _build_escalation_context(result["reason_code"], entities)
-            result["status"] = "awaiting_human"
-            has_escalations = True
-
         elif action == "clarify":
-            result["domain_result"] = _build_clarify_context(result["reason_code"], constraints)
+            result["domain_result"] = _build_clarify_context(
+                result.get("reason_code", "LOW_CONFIDENCE"), constraints,
+            )
             result["status"] = "needs_clarification"
-
-    response_phase = "partial" if has_escalations else "complete"
+        elif action == "escalate":
+            result["domain_result"] = _build_escalation_context(
+                result.get("reason_code", "DEFAULT_DENY"), entities,
+            )
+            result["status"] = "awaiting_human"
+        else:
+            result["domain_result"] = "This request cannot be processed at this time."
+            result["status"] = "blocked"
 
     return {
         "intent_results": intent_results,
+        "response_phase": "complete",
+        "has_tool_calls": False,
+    }
+
+
+def merge_results_node(state: AgentState) -> dict:
+    """Combines parallel processed_results into intent_results, computes routing flags."""
+    processed = state.get("processed_results") or []
+    has_tool_calls = any(r.get("tool_calls") for r in processed)
+    has_escalations = any(r.get("status") == "awaiting_human" for r in processed)
+    response_phase = "partial" if has_escalations else "complete"
+
+    return {
+        "intent_results": processed,
         "response_phase": response_phase,
+        "has_tool_calls": has_tool_calls,
     }

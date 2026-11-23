@@ -265,8 +265,8 @@ MOCK_ORDERS: dict[str, dict[str, dict]] = {
             "total_amount": 1450,
             "status": "delivered",
             "order_status": "delivered",
-            "order_date": "2026-09-20",
-            "delivery_date": "2026-09-25",
+            "order_date": "2026-11-10",
+            "delivery_date": "2026-11-15",
             "tracking_number": "TRK-TC-200101",
             "shipping_carrier": "India Post",
             "items": [
@@ -288,8 +288,8 @@ MOCK_ORDERS: dict[str, dict[str, dict]] = {
             "total_amount": 3200,
             "status": "delivered",
             "order_status": "delivered",
-            "order_date": "2026-08-20",
-            "delivery_date": "2026-09-01",
+            "order_date": "2026-11-08",
+            "delivery_date": "2026-11-12",
             "tracking_number": "TRK-TC-200201",
             "shipping_carrier": "India Post",
             "items": [
@@ -485,13 +485,63 @@ MOCK_REFUND_HISTORY: dict[str, dict[str, list[dict]]] = {
 }
 
 
+MOCK_CUSTOMERS: dict[str, dict[str, str]] = {
+    "megamart": {
+        "CUST-MM-001": "alice@example.com",
+        "CUST-MM-002": "bob@example.com",
+        "CUST-MM-003": "charlie@example.com",
+        "CUST-MM-004": "dave@example.com",
+        "CUST-MM-005": "eve@example.com",
+        "CUST-MM-006": "frank@example.com",
+    },
+    "tiny-candles": {
+        "CUST-TC-001": "grace@example.com",
+        "CUST-TC-002": "henry@example.com",
+        "CUST-TC-003": "iris@example.com",
+        "CUST-TC-004": "jack@example.com",
+    },
+}
+
+_EMAIL_TO_CUSTOMER: dict[str, dict[str, str]] = {}
+for _tenant, _cmap in MOCK_CUSTOMERS.items():
+    _EMAIL_TO_CUSTOMER[_tenant] = {email: cid for cid, email in _cmap.items()}
+
+for _tenant, _orders in MOCK_ORDERS.items():
+    _rev = _EMAIL_TO_CUSTOMER.get(_tenant, {})
+    for _order in _orders.values():
+        _order["customer_id"] = _rev.get(_order.get("customer_email", ""), "")
+
+MOCK_REFUND_HISTORY_BY_CUSTOMER: dict[str, dict[str, list[dict]]] = {
+    "megamart": {
+        "CUST-MM-001": [
+            {"order_id": "ORD-MM-9001", "amount": 3000, "date": "2026-09-20"},
+            {"order_id": "ORD-MM-9002", "amount": 2500, "date": "2026-09-25"},
+            {"order_id": "ORD-MM-9003", "amount": 1500, "date": "2026-09-28"},
+        ],
+    },
+    "tiny-candles": {},
+}
+
+
 def get_orders_by_email(tenant_id: str, email: str) -> list[dict]:
     orders = MOCK_ORDERS.get(tenant_id, {})
     return [o for o in orders.values() if o.get("customer_email", "").lower() == email.lower()]
 
 
+def get_orders_by_customer(tenant_id: str, customer_id: str) -> list[dict]:
+    orders = MOCK_ORDERS.get(tenant_id, {})
+    return [o for o in orders.values() if o.get("customer_id") == customer_id]
+
+
 def get_order(tenant_id: str, order_id: str) -> dict | None:
     return MOCK_ORDERS.get(tenant_id, {}).get(order_id)
+
+
+def get_order_scoped(tenant_id: str, customer_id: str, order_id: str) -> dict | None:
+    order = MOCK_ORDERS.get(tenant_id, {}).get(order_id)
+    if order and order.get("customer_id") == customer_id:
+        return order
+    return None
 
 
 def get_order_item(tenant_id: str, order_id: str, item_id: str) -> dict | None:
@@ -514,4 +564,13 @@ def get_refund_count_30d(
     today = today or date.today()
     cutoff = today - timedelta(days=30)
     history = MOCK_REFUND_HISTORY.get(tenant_id, {}).get(customer_email, [])
+    return sum(1 for r in history if date.fromisoformat(r["date"]) >= cutoff)
+
+
+def get_refund_count_30d_by_customer(
+    tenant_id: str, customer_id: str, today: date | None = None
+) -> int:
+    today = today or date.today()
+    cutoff = today - timedelta(days=30)
+    history = MOCK_REFUND_HISTORY_BY_CUSTOMER.get(tenant_id, {}).get(customer_id, [])
     return sum(1 for r in history if date.fromisoformat(r["date"]) >= cutoff)

@@ -1,11 +1,21 @@
-"""Seed the orders, order_items, and refund_history tables from mock_data."""
+"""Seed the customers, orders, order_items, and refund_history tables from mock_data."""
 from __future__ import annotations
 
 from datetime import date
 
 from app.database import SessionLocal
 from app.graph.mock_data import MOCK_ORDERS, MOCK_REFUND_HISTORY
-from app.models import Order, OrderItem, RefundHistory, Tenant
+from app.models import Customer, Order, OrderItem, RefundHistory, Tenant
+
+
+def _build_customer_id(tenant_prefix: str, seq: int) -> str:
+    return f"CUST-{tenant_prefix}-{seq:03d}"
+
+
+_TENANT_PREFIX = {
+    "megamart": "MM",
+    "tiny-candles": "TC",
+}
 
 
 def seed_orders():
@@ -19,14 +29,38 @@ def seed_orders():
                 print(f"Skipping {tenant_name}: tenant not found in DB")
                 continue
 
+            prefix = _TENANT_PREFIX.get(tenant_name, tenant_name[:2].upper())
+            emails_seen: dict[str, str] = {}
+            customer_seq = 0
+
             for order_data in orders.values():
+                email = order_data["customer_email"]
+
+                if email not in emails_seen:
+                    customer_seq += 1
+                    cust_id = _build_customer_id(prefix, customer_seq)
+                    existing_cust = db.query(Customer).filter_by(customer_id=cust_id).first()
+                    if not existing_cust:
+                        name = email.split("@")[0].capitalize()
+                        customer = Customer(
+                            customer_id=cust_id,
+                            tenant_id=tenant.id,
+                            email=email,
+                            name=name,
+                        )
+                        db.add(customer)
+                    emails_seen[email] = cust_id
+
                 existing = db.query(Order).filter_by(order_id=order_data["order_id"]).first()
                 if existing:
+                    if not existing.customer_id:
+                        existing.customer_id = emails_seen[email]
                     continue
 
                 order = Order(
                     order_id=order_data["order_id"],
                     tenant_id=tenant.id,
+                    customer_id=emails_seen[email],
                     customer_email=order_data["customer_email"],
                     category=order_data.get("category", ""),
                     product=order_data.get("product", ""),
@@ -65,8 +99,13 @@ def seed_orders():
                     if existing:
                         continue
 
+                    cust = db.query(Customer).filter_by(
+                        tenant_id=tenant.id, email=email,
+                    ).first()
+
                     refund = RefundHistory(
                         tenant_id=tenant.id,
+                        customer_id=cust.customer_id if cust else None,
                         customer_email=email,
                         order_id=ref["order_id"],
                         amount=ref["amount"],

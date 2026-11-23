@@ -2,7 +2,18 @@ from datetime import date
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, Computed, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Computed,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
 
@@ -12,6 +23,7 @@ class TSVector(UserDefinedType):
 
     def get_col_spec(self):
         return "TSVECTOR"
+
 
 from app.database import Base
 
@@ -24,8 +36,11 @@ class Tenant(Base):
     api_key_hash: Mapped[str]
 
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="tenant")
+    customers: Mapped[list["Customer"]] = relationship(back_populates="tenant")
     orders: Mapped[list["Order"]] = relationship(back_populates="tenant")
-    refund_history: Mapped[list["RefundHistory"]] = relationship(back_populates="tenant")
+    refund_history: Mapped[list["RefundHistory"]] = relationship(
+        back_populates="tenant"
+    )
 
 
 class Chunk(Base):
@@ -45,17 +60,43 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
-    content_tsv = Column("content_tsv", TSVector(), Computed("to_tsvector('english', content)", persisted=True))
+    content_tsv = Column(
+        "content_tsv",
+        TSVector(),
+        Computed("to_tsvector('english', content)", persisted=True),
+    )
 
     tenant: Mapped[Tenant] = relationship(back_populates="chunks")
 
 
+class Customer(Base):
+    __tablename__ = "customers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "customer_id", name="uq_customer_tenant_customer"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    email: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String, default="")
+
+    tenant: Mapped[Tenant] = relationship(back_populates="customers")
+    orders: Mapped[list["Order"]] = relationship(back_populates="customer")
+
+
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        Index("ix_orders_tenant_customer", "tenant_id", "customer_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     order_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    customer_id: Mapped[str] = mapped_column(
+        ForeignKey("customers.customer_id"), index=True, nullable=False,
+    )
     customer_email: Mapped[str] = mapped_column(String, index=True)
     category: Mapped[str] = mapped_column(String, default="")
     product: Mapped[str] = mapped_column(String, default="")
@@ -68,7 +109,10 @@ class Order(Base):
     shipping_carrier: Mapped[str | None] = mapped_column(String, nullable=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="orders")
-    items: Mapped[list["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    customer: Mapped["Customer"] = relationship(back_populates="orders")
+    items: Mapped[list["OrderItem"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
 
 
 class OrderItem(Base):
@@ -90,6 +134,7 @@ class RefundHistory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     customer_email: Mapped[str] = mapped_column(String, index=True)
     order_id: Mapped[str] = mapped_column(String)
     amount: Mapped[int] = mapped_column(Integer, default=0)

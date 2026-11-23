@@ -94,7 +94,7 @@ def _ctx(
     entities: dict | None = None,
     escalation_signals: list[str] | None = None,
     tenant_active: bool = True,
-    customer_email: str | None = None,
+    customer_id: str = "",
     order: dict | None = None,
     refund_count_30d: int = 0,
 ) -> GateContext:
@@ -107,7 +107,7 @@ def _ctx(
             confidence=confidence,
             escalation_signals=escalation_signals or [],
         ),
-        customer_email=customer_email,
+        customer_id=customer_id,
         order=order,
         refund_count_30d=refund_count_30d,
         today=TODAY,
@@ -165,29 +165,23 @@ class TestGlobalHardRules:
         assert d.action == "clarify"
         assert d.reason_code == "VERIFICATION_REQUIRED"
 
-    def test_identity_mismatch(self):
-        order = {
-            "order_id": "ORD-MM-1001",
-            "customer_email": "alice@example.com",
-            "category": "electronics",
-            "amount": 4500,
-            "status": "delivered",
-            "delivery_date": "2026-09-20",
-        }
+    def test_wrong_customer_owner_scoped_no_order(self):
+        """Owner-scoped queries prevent cross-customer access:
+        wrong customer_id means order=None at the data layer."""
         ctx = _ctx(
             "megamart",
             "refund",
             entities={"order_id": "ORD-MM-1001", "email": "wrong@example.com"},
-            order=order,
+            order=None,
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
         assert d.action == "clarify"
-        assert d.reason_code == "IDENTITY_MISMATCH"
+        assert d.reason_code == "VERIFICATION_REQUIRED"
 
     def test_identity_match_passes(self):
         order = {
             "order_id": "ORD-MM-1001",
-            "customer_email": "alice@example.com",
+            "customer_id": "alice@example.com",
             "category": "electronics",
             "amount": 4500,
             "status": "delivered",
@@ -208,10 +202,10 @@ class TestGlobalHardRules:
 
 
 class TestGlobalCeiling:
-    def test_refund_over_global_ceiling(self):
+    def test_refund_over_global_ceiling_needs_approval(self):
         order = {
             "order_id": "ORD-MM-1004",
-            "customer_email": "dave@example.com",
+            "customer_id": "dave@example.com",
             "category": "electronics",
             "amount": 65000,
             "status": "delivered",
@@ -224,13 +218,15 @@ class TestGlobalCeiling:
             order=order,
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
-        assert d.action == "escalate"
-        assert d.reason_code == "GLOBAL_REFUND_CEILING"
+        assert d.action == "allow"
+        assert d.reason_code == "REFUND_NEEDS_APPROVAL"
+        assert d.constraints["needs_approval"] is True
+        assert "GLOBAL_REFUND_CEILING" in d.constraints["approval_reasons"]
 
-    def test_refund_at_ceiling_not_escalated(self):
+    def test_refund_at_ceiling_no_approval_needed(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "electronics",
             "amount": 50000,
             "status": "delivered",
@@ -243,7 +239,7 @@ class TestGlobalCeiling:
             order=order,
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
-        assert d.reason_code != "GLOBAL_REFUND_CEILING"
+        assert "GLOBAL_REFUND_CEILING" not in d.constraints.get("approval_reasons", [])
 
 
 # ── Layer 3: tenant intent rules ─────────────────────────────────────
@@ -307,7 +303,7 @@ class TestRefund:
     def test_refund_allowed_megamart_electronics_within_window(self):
         order = {
             "order_id": "ORD-MM-1001",
-            "customer_email": "alice@example.com",
+            "customer_id": "alice@example.com",
             "category": "electronics",
             "amount": 4500,
             "status": "delivered",
@@ -327,7 +323,7 @@ class TestRefund:
     def test_refund_clothing_window_expired(self):
         order = {
             "order_id": "ORD-MM-1002",
-            "customer_email": "bob@example.com",
+            "customer_id": "bob@example.com",
             "category": "clothing",
             "amount": 1200,
             "status": "delivered",
@@ -346,7 +342,7 @@ class TestRefund:
     def test_refund_perishables_not_allowed(self):
         order = {
             "order_id": "ORD-MM-1003",
-            "customer_email": "charlie@example.com",
+            "customer_id": "charlie@example.com",
             "category": "perishables",
             "amount": 850,
             "status": "delivered",
@@ -362,10 +358,10 @@ class TestRefund:
         assert d.action == "block"
         assert d.reason_code == "RETURNS_NOT_ALLOWED"
 
-    def test_refund_over_tenant_auto_limit(self):
+    def test_refund_over_tenant_auto_limit_needs_approval(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "electronics",
             "amount": 15000,
             "status": "delivered",
@@ -378,13 +374,15 @@ class TestRefund:
             order=order,
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
-        assert d.action == "escalate"
-        assert d.reason_code == "REFUND_OVER_LIMIT"
+        assert d.action == "allow"
+        assert d.reason_code == "REFUND_NEEDS_APPROVAL"
+        assert d.constraints["needs_approval"] is True
+        assert "REFUND_OVER_LIMIT" in d.constraints["approval_reasons"]
 
-    def test_refund_rate_limited(self):
+    def test_refund_rate_limited_needs_approval(self):
         order = {
             "order_id": "ORD-MM-1001",
-            "customer_email": "alice@example.com",
+            "customer_id": "alice@example.com",
             "category": "electronics",
             "amount": 4500,
             "status": "delivered",
@@ -398,13 +396,15 @@ class TestRefund:
             refund_count_30d=3,
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
-        assert d.action == "escalate"
-        assert d.reason_code == "REFUND_RATE_LIMITED"
+        assert d.action == "allow"
+        assert d.reason_code == "REFUND_NEEDS_APPROVAL"
+        assert d.constraints["needs_approval"] is True
+        assert "REFUND_RATE_LIMITED" in d.constraints["approval_reasons"]
 
-    def test_refund_tiny_candles_always_escalate(self):
+    def test_refund_tiny_candles_always_needs_approval(self):
         order = {
             "order_id": "ORD-TC-2001",
-            "customer_email": "grace@example.com",
+            "customer_id": "grace@example.com",
             "category": "candles",
             "amount": 1450,
             "status": "delivered",
@@ -417,13 +417,15 @@ class TestRefund:
             order=order,
         )
         d = evaluate_policy(ctx, tenant_config=TINY_CANDLES_CONFIG)
-        assert d.action == "escalate"
-        assert d.reason_code == "TENANT_REFUND_REVIEW_REQUIRED"
+        assert d.action == "allow"
+        assert d.reason_code == "REFUND_NEEDS_APPROVAL"
+        assert d.constraints["needs_approval"] is True
+        assert "TENANT_REFUND_REVIEW_REQUIRED" in d.constraints["approval_reasons"]
 
     def test_refund_under_limit_megamart(self):
         order = {
             "order_id": "ORD-MM-1007",
-            "customer_email": "frank@example.com",
+            "customer_id": "frank@example.com",
             "category": "electronics",
             "amount": 1800,
             "status": "delivered",
@@ -442,7 +444,7 @@ class TestRefund:
     def test_refund_default_category_14_day_window_within(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "home_decor",
             "amount": 2000,
             "status": "delivered",
@@ -460,7 +462,7 @@ class TestRefund:
     def test_refund_default_category_14_day_window_expired(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "home_decor",
             "amount": 2000,
             "status": "delivered",
@@ -481,7 +483,7 @@ class TestCancel:
     def test_cancel_pending_order(self):
         order = {
             "order_id": "ORD-MM-1007",
-            "customer_email": "frank@example.com",
+            "customer_id": "frank@example.com",
             "category": "electronics",
             "amount": 1800,
             "status": "pending",
@@ -499,7 +501,7 @@ class TestCancel:
     def test_cancel_processing_order(self):
         order = {
             "order_id": "ORD-MM-1005",
-            "customer_email": "alice@example.com",
+            "customer_id": "alice@example.com",
             "category": "clothing",
             "amount": 3800,
             "status": "processing",
@@ -516,7 +518,7 @@ class TestCancel:
     def test_cancel_shipped_order_blocked(self):
         order = {
             "order_id": "ORD-MM-1006",
-            "customer_email": "eve@example.com",
+            "customer_id": "eve@example.com",
             "category": "electronics",
             "amount": 2500,
             "status": "shipped",
@@ -534,7 +536,7 @@ class TestCancel:
     def test_cancel_delivered_order_blocked(self):
         order = {
             "order_id": "ORD-MM-1001",
-            "customer_email": "alice@example.com",
+            "customer_id": "alice@example.com",
             "category": "electronics",
             "amount": 4500,
             "status": "delivered",
@@ -552,7 +554,7 @@ class TestCancel:
     def test_cancel_subscription_within_min_commitment(self):
         order = {
             "order_id": "ORD-TC-2003",
-            "customer_email": "iris@example.com",
+            "customer_id": "iris@example.com",
             "category": "subscription_box",
             "amount": 999,
             "status": "active",
@@ -571,7 +573,7 @@ class TestCancel:
     def test_cancel_subscription_after_commitment(self):
         order = {
             "order_id": "ORD-MM-1008",
-            "customer_email": "frank@example.com",
+            "customer_id": "frank@example.com",
             "category": "subscription",
             "amount": 499,
             "status": "active",
@@ -592,7 +594,7 @@ class TestCancel:
             "megamart",
             "cancel_order",
             entities={"order_id": "ORD-MM-FAKE"},
-            customer_email="nobody@example.com",
+            customer_id="CUST-NOBODY",
         )
         d = evaluate_policy(ctx, tenant_config=MEGAMART_CONFIG)
         assert d.action == "clarify"
@@ -621,7 +623,7 @@ class TestCategoryOverrides:
     def test_electronics_30_day_window(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "electronics",
             "amount": 5000,
             "status": "delivered",
@@ -639,7 +641,7 @@ class TestCategoryOverrides:
     def test_clothing_7_day_window_expired(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "clothing",
             "amount": 800,
             "status": "delivered",
@@ -658,7 +660,7 @@ class TestCategoryOverrides:
     def test_electronics_uses_unopened_condition(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "electronics",
             "amount": 3000,
             "status": "delivered",
@@ -677,7 +679,7 @@ class TestCategoryOverrides:
     def test_default_category_uses_any_condition(self):
         order = {
             "order_id": "ORD-X",
-            "customer_email": "x@example.com",
+            "customer_id": "x@example.com",
             "category": "home_decor",
             "amount": 2000,
             "status": "delivered",
@@ -703,10 +705,10 @@ class TestCrossTenant:
             d = evaluate_policy(ctx, tenant_config=cfg)
             assert d.action == "allow"
 
-    def test_tiny_candles_refund_always_escalates(self):
+    def test_tiny_candles_refund_always_needs_approval(self):
         order = {
             "order_id": "ORD-TC-2005",
-            "customer_email": "grace@example.com",
+            "customer_id": "grace@example.com",
             "category": "candles",
             "amount": 2100,
             "status": "delivered",
@@ -719,13 +721,15 @@ class TestCrossTenant:
             order=order,
         )
         d = evaluate_policy(ctx, tenant_config=TINY_CANDLES_CONFIG)
-        assert d.action == "escalate"
-        assert d.reason_code == "TENANT_REFUND_REVIEW_REQUIRED"
+        assert d.action == "allow"
+        assert d.reason_code == "REFUND_NEEDS_APPROVAL"
+        assert d.constraints["needs_approval"] is True
+        assert "TENANT_REFUND_REVIEW_REQUIRED" in d.constraints["approval_reasons"]
 
     def test_tiny_candles_cancel_processing_allowed(self):
         order = {
             "order_id": "ORD-TC-2004",
-            "customer_email": "jack@example.com",
+            "customer_id": "jack@example.com",
             "category": "candles",
             "amount": 750,
             "status": "processing",

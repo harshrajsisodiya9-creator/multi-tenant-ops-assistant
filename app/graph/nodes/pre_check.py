@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.graph.mock_data import get_tenant_info
+from app.graph.data_access import get_tenant_info
 from app.graph.schemas import IntentResult, RouterOutput
 from app.graph.state import AgentState
 

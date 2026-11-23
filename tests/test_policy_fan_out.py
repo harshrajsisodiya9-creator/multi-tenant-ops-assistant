@@ -28,7 +28,7 @@ class TestSingleIntent:
         state = {
             "tenant_id": "megamart",
             "user_message": "Where is my order?",
-            "customer_email": "alice@example.com",
+            "customer_id": "CUST-MM-001",
             "router_output": {
                 "intent": "order_status",
                 "entities": {"order_id": "ORD-MM-1001"},
@@ -40,11 +40,11 @@ class TestSingleIntent:
         result = policy_fan_out_node(state)
         assert result["intent_results"][0]["policy_action"] == "allow"
 
-    def test_refund_escalated_tiny_candles(self):
+    def test_refund_needs_approval_tiny_candles(self):
         state = {
             "tenant_id": "tiny-candles",
             "user_message": "I want a refund",
-            "customer_email": "grace@example.com",
+            "customer_id": "CUST-TC-001",
             "router_output": {
                 "intent": "refund",
                 "entities": {"order_id": "ORD-TC-2001"},
@@ -54,8 +54,9 @@ class TestSingleIntent:
             },
         }
         result = policy_fan_out_node(state)
-        assert result["intent_results"][0]["policy_action"] == "escalate"
-        assert result["intent_results"][0]["reason_code"] == "TENANT_REFUND_REVIEW_REQUIRED"
+        assert result["intent_results"][0]["policy_action"] == "allow"
+        assert result["intent_results"][0]["reason_code"] == "REFUND_NEEDS_APPROVAL"
+        assert result["intent_results"][0]["constraints"]["needs_approval"] is True
 
     def test_out_of_scope_blocked(self):
         state = {
@@ -94,7 +95,7 @@ class TestMultiIntent:
         state = {
             "tenant_id": "megamart",
             "user_message": "Check ORD-MM-1001 and refund ORD-MM-1005",
-            "customer_email": "alice@example.com",
+            "customer_id": "CUST-MM-001",
             "router_output": {
                 "intent": "order_status",
                 "entities": {"order_id": "ORD-MM-1001"},
@@ -119,7 +120,7 @@ class TestMultiIntent:
         state = {
             "tenant_id": "megamart",
             "user_message": "Check and refund",
-            "customer_email": "alice@example.com",
+            "customer_id": "CUST-MM-001",
             "router_output": {
                 "intent": "order_status",
                 "entities": {"order_id": "ORD-MM-1001"},
@@ -142,7 +143,7 @@ class TestMultiIntent:
         state = {
             "tenant_id": "tiny-candles",
             "user_message": "Check order and refund",
-            "customer_email": "grace@example.com",
+            "customer_id": "CUST-TC-001",
             "router_output": {
                 "intent": "order_status",
                 "entities": {"order_id": "ORD-TC-2001"},
@@ -159,7 +160,8 @@ class TestMultiIntent:
         }
         result = policy_fan_out_node(state)
         assert result["intent_results"][0]["policy_action"] == "allow"
-        assert result["intent_results"][1]["policy_action"] == "escalate"
+        assert result["intent_results"][1]["policy_action"] == "allow"
+        assert result["intent_results"][1]["constraints"]["needs_approval"] is True
 
     def test_all_statuses_pending_after_fan_out(self):
         state = {
@@ -178,7 +180,7 @@ class TestMultiIntent:
                     }
                 ],
             },
-            "customer_email": "alice@example.com",
+            "customer_id": "CUST-MM-001",
         }
         result = policy_fan_out_node(state)
         for ir in result["intent_results"]:

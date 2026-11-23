@@ -1,12 +1,22 @@
+from __future__ import annotations
+
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_tenant
+from app.auth import (
+    TokenClaims,
+    get_authenticated_customer,
+    get_current_tenant,
+    get_reviewer,
+    mint_token,
+)
+from app.config import setting
 from app.database import get_db
 from app.graph.builder import build_graph
 from app.hybrid_search import answer_question
@@ -14,7 +24,10 @@ from app.knowledgebase import index_document, read_uploaded_document
 from app.models import Tenant
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 agent_graph = build_graph()
+
+_THREAD_OWNERS: dict[str, tuple[str, str]] = {}
 
 
 class AskRequest(BaseModel):
@@ -24,7 +37,7 @@ class AskRequest(BaseModel):
 
 class AgentRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    customer_email: str | None = None
+    thread_id: str | None = None
 
 
 class HumanDecision(BaseModel):
@@ -38,6 +51,13 @@ class HumanDecision(BaseModel):
 class ResumeRequest(BaseModel):
     thread_id: str
     decisions: list[HumanDecision]
+
+
+class MintTokenRequest(BaseModel):
+    tenant_id: str
+    customer_id: str
+    role: str | None = None
+    expires_minutes: int = 60
 
 
 @app.get("/whoami")
@@ -99,23 +119,40 @@ def ask_question(
 @app.post("/agent")
 def agent_endpoint(
     payload: AgentRequest,
-    tenant: Tenant = Depends(get_current_tenant),
+    claims: TokenClaims = Depends(get_authenticated_customer),
 ):
-    thread_id = uuid4().hex
+    if payload.thread_id:
+        thread_id = payload.thread_id
+        owner = _THREAD_OWNERS.get(thread_id)
+        if owner is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Thread not found",
+            )
+        if owner != (claims.tenant_id, claims.customer_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Thread belongs to a different customer",
+            )
+    else:
+        thread_id = uuid4().hex
+        _THREAD_OWNERS[thread_id] = (claims.tenant_id, claims.customer_id)
+
     config = {"configurable": {"thread_id": thread_id}}
 
     state = agent_graph.invoke(
         {
-            "tenant_id": str(tenant.id),
+            "tenant_id": claims.tenant_id,
             "user_message": payload.message,
-            "customer_email": payload.customer_email,
+            "customer_id": claims.customer_id,
+            "customer_email": claims.email,
         },
         config=config,
     )
 
     response_phase = state.get("response_phase", "complete")
 
-    result = {
+    result: dict = {
         "tenant_id": state.get("tenant_id"),
         "user_message": state.get("user_message"),
         "router_output": state.get("router_output"),
@@ -138,8 +175,20 @@ def agent_endpoint(
 @app.post("/agent/resume")
 def agent_resume_endpoint(
     payload: ResumeRequest,
-    tenant: Tenant = Depends(get_current_tenant),
+    claims: TokenClaims = Depends(get_reviewer),
 ):
+    owner = _THREAD_OWNERS.get(payload.thread_id)
+    if owner is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread not found",
+        )
+    if owner[0] != claims.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Thread belongs to a different tenant",
+        )
+
     config = {"configurable": {"thread_id": payload.thread_id}}
 
     decisions = [d.model_dump() for d in payload.decisions]
@@ -154,3 +203,16 @@ def agent_resume_endpoint(
         "response": state.get("response", ""),
         "intent_results": state.get("intent_results"),
     }
+
+
+if setting.app_env in ("dev", "test"):
+
+    @app.post("/dev/token")
+    def dev_mint_token(payload: MintTokenRequest):
+        token = mint_token(
+            payload.tenant_id,
+            payload.customer_id,
+            role=payload.role,
+            expires_minutes=payload.expires_minutes,
+        )
+        return {"token": token}

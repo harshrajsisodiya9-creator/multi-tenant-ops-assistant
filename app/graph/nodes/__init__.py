@@ -1,6 +1,12 @@
 from app.graph.nodes.action_check import action_check_node
 from app.graph.nodes.escalation_handler import escalation_handler_node
-from app.graph.nodes.intent_executor import intent_executor_node
+from app.graph.nodes.intent_executor import (
+    agent_executor_node,
+    bail_executor_node,
+    faq_executor_node,
+    merge_results_node,
+    simple_executor_node,
+)
 from app.graph.nodes.policy_fan_out import policy_fan_out_node
 from app.graph.nodes.pre_check import pre_check_node
 from app.graph.nodes.response_agent import response_agent_node
@@ -18,7 +24,11 @@ from app.graph.nodes.router import (
 __all__ = [
     "action_check_node",
     "escalation_handler_node",
-    "intent_executor_node",
+    "agent_executor_node",
+    "faq_executor_node",
+    "simple_executor_node",
+    "bail_executor_node",
+    "merge_results_node",
     "policy_fan_out_node",
     "pre_check_node",
     "response_agent_node",

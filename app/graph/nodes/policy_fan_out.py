@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.graph.mock_data import get_order, get_orders_by_email, get_refund_count_30d, get_tenant_info
+from app.graph.data_access import (
+    get_customer_orders,
+    get_order_scoped,
+    get_refund_count_30d,
+    get_tenant_info,
+)
 from app.graph.nodes.pre_check import CONVERSATIONAL_INTENTS
 from app.graph.policy_gate import GateContext, ORDER_INTENTS, evaluate_policy
 from app.graph.schemas import IntentResult, PolicyDecision, RouterOutput, SubIntent
@@ -21,19 +26,18 @@ def _product_matches_message(product_name: str, message_lower: str) -> bool:
 
 def _resolve_order_entity(
     tenant_id: str,
+    customer_id: str,
     intent: str,
     entities: dict,
-    customer_email: str | None,
     user_message: str,
 ) -> tuple[dict, PolicyDecision | None]:
     if intent not in ORDER_INTENTS or entities.get("order_id"):
         return entities, None
 
-    email = customer_email or entities.get("email")
-    if not email:
+    if not customer_id:
         return entities, None
 
-    customer_orders = get_orders_by_email(tenant_id, email)
+    customer_orders = get_customer_orders(tenant_id, customer_id)
     if not customer_orders:
         return entities, PolicyDecision(action="clarify", reason_code="NO_ORDERS_FOUND")
 
@@ -74,22 +78,21 @@ def _resolve_order_entity(
 
 def _build_gate_context(
     tenant_id: str,
+    customer_id: str,
     tenant_info: dict,
     intent: str,
     entities: dict,
     confidence: float,
     escalation_signals: list[str],
-    customer_email: str | None,
 ) -> GateContext:
     order = None
     order_id = entities.get("order_id")
-    if order_id:
-        order = get_order(tenant_id, order_id)
+    if order_id and customer_id:
+        order = get_order_scoped(tenant_id, customer_id, order_id)
 
     refund_count = 0
-    email = customer_email or entities.get("email")
-    if email:
-        refund_count = get_refund_count_30d(tenant_id, email)
+    if customer_id:
+        refund_count = get_refund_count_30d(tenant_id, customer_id)
 
     ro = RouterOutput(
         intent=intent,
@@ -102,7 +105,7 @@ def _build_gate_context(
         tenant_id=tenant_id,
         tenant_active=tenant_info.get("active", True),
         router_output=ro,
-        customer_email=email,
+        customer_id=customer_id,
         order=order,
         refund_count_30d=refund_count,
     )
@@ -137,8 +140,8 @@ def policy_fan_out_node(state: AgentState) -> dict:
 
     router_output = RouterOutput(**state["router_output"])
     tenant_id = state["tenant_id"]
+    customer_id = state.get("customer_id") or ""
     tenant_info = get_tenant_info(tenant_id) or {"active": True}
-    customer_email = state.get("customer_email") or router_output.entities.get("email")
 
     all_intents: list[tuple[str, dict, float]] = [
         (router_output.intent, router_output.entities, router_output.confidence),
@@ -157,19 +160,19 @@ def policy_fan_out_node(state: AgentState) -> dict:
             decision = skip
         else:
             entities, early_clarify = _resolve_order_entity(
-                tenant_id, intent, entities, customer_email, user_message,
+                tenant_id, customer_id, intent, entities, user_message,
             )
             if early_clarify:
                 decision = early_clarify
             else:
                 ctx = _build_gate_context(
                     tenant_id=tenant_id,
+                    customer_id=customer_id,
                     tenant_info=tenant_info,
                     intent=intent,
                     entities=entities,
                     confidence=confidence,
                     escalation_signals=router_output.escalation_signals,
-                    customer_email=customer_email,
                 )
                 decision = evaluate_policy(ctx)
 

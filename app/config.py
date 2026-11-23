@@ -1,8 +1,10 @@
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_DIR / ".env", override=True)
 
 
 class Setting(BaseSettings):
@@ -14,7 +16,14 @@ class Setting(BaseSettings):
     gemini_api_key: str = ""
     gemini_model2: str = "gemini-3.1-flash-lite"
     gemini_model: str = "gemini-3.5-flash-lite"
+    app_env: str = "dev"
     agent_mode: str = "mock"
 
 
 setting = Setting()
+
+if setting.app_env == "prod" and setting.agent_mode != "prod":
+    raise RuntimeError(
+        f"APP_ENV=prod requires AGENT_MODE=prod (got '{setting.agent_mode}'). "
+        "Mock data must never serve production traffic."
+    )

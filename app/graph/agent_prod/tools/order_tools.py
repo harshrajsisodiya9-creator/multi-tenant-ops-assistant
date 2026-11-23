@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.graph.agent_prod.tool_context import ToolContext
 from app.graph.policy_loader import resolve_policy
 from app.models import Order, OrderItem, RefundHistory
 
@@ -15,31 +16,41 @@ def _get_db() -> Session:
     return SessionLocal()
 
 
-def _find_order(db: Session, tenant_id: str, order_id: str) -> Order | None:
+def _find_order(
+    db: Session, ctx: ToolContext, order_id: str, *, for_update: bool = False,
+) -> Order | None:
     stmt = select(Order).where(
-        Order.tenant_id == UUID(tenant_id),
+        Order.tenant_id == UUID(ctx.tenant_id),
+        Order.customer_id == ctx.customer_id,
         Order.order_id == order_id,
     )
+    if for_update and db.bind.dialect.name != "sqlite":
+        stmt = stmt.with_for_update()
     return db.execute(stmt).scalar_one_or_none()
 
 
-def _find_item(db: Session, order_id: str, item_id: str) -> OrderItem | None:
-    stmt = select(OrderItem).where(
-        OrderItem.order_id == order_id,
-        OrderItem.item_id == item_id,
+def _find_item(db: Session, ctx: ToolContext, order_id: str, item_id: str) -> OrderItem | None:
+    stmt = (
+        select(OrderItem)
+        .join(Order, OrderItem.order_id == Order.order_id)
+        .where(
+            Order.tenant_id == UUID(ctx.tenant_id),
+            Order.customer_id == ctx.customer_id,
+            OrderItem.order_id == order_id,
+            OrderItem.item_id == item_id,
+        )
     )
     return db.execute(stmt).scalar_one_or_none()
 
 
-def get_order_details(tenant_id: str, order_id: str) -> dict:
+def get_order_details(ctx: ToolContext, order_id: str) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id)
         if not order:
             return {"error": f"Order {order_id} not found."}
         return {
             "order_id": order.order_id,
-            "customer_email": order.customer_email,
             "order_status": order.status,
             "total_amount": order.total_amount,
             "order_date": order.order_date.isoformat() if order.order_date else None,
@@ -60,16 +71,16 @@ def get_order_details(tenant_id: str, order_id: str) -> dict:
 
 
 def get_return_eligibility(
-    tenant_id: str, order_id: str, item_id: str | None = None
+    ctx: ToolContext, order_id: str, item_id: str | None = None
 ) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id)
         if not order:
             return {"eligible": False, "reason": f"Order {order_id} not found."}
 
         if item_id:
-            item = _find_item(db, order_id, item_id)
+            item = _find_item(db, ctx, order_id, item_id)
             if not item:
                 return {"eligible": False, "reason": f"Item {item_id} not found in order {order_id}."}
             category = item.category
@@ -78,7 +89,7 @@ def get_return_eligibility(
             category = order.category
             amount = order.amount
 
-        policy = resolve_policy(tenant_id, category)
+        policy = resolve_policy(ctx.tenant_id, category)
 
         if not policy.return_policy.allowed:
             return {
@@ -111,21 +122,27 @@ def get_return_eligibility(
 
 
 def initiate_return(
-    tenant_id: str, order_id: str, item_id: str | None = None, reason: str = ""
+    ctx: ToolContext, order_id: str, item_id: str | None = None, reason: str = ""
 ) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
             return {"success": False, "error": f"Order {order_id} not found."}
 
         if item_id:
-            item = _find_item(db, order_id, item_id)
+            item = _find_item(db, ctx, order_id, item_id)
             if not item:
                 return {"success": False, "error": f"Item {item_id} not found."}
             product = item.product
+            item_category = item.category
         else:
             product = order.product
+            item_category = None
+
+        policy_block = _check_return_policy(ctx.tenant_id, order, item_category)
+        if policy_block:
+            return policy_block
 
         return {
             "success": True,
@@ -137,8 +154,27 @@ def initiate_return(
         db.close()
 
 
+def _check_return_policy(
+    tenant_id: str, order: Order, item_category: str | None = None,
+) -> dict | None:
+    """Re-run return policy inside a write tool's transaction.
+    Returns an error dict if blocked, None if allowed."""
+    category = item_category or order.category
+    policy = resolve_policy(tenant_id, category)
+
+    if not policy.return_policy.allowed:
+        return {"success": False, "error": f"Returns not allowed for {category}."}
+
+    if order.delivery_date:
+        days_since = (date.today() - order.delivery_date).days
+        if days_since > policy.return_policy.window_days:
+            return {"success": False, "error": f"Return window expired ({days_since} days since delivery, limit {policy.return_policy.window_days})."}
+
+    return None
+
+
 def initiate_refund(
-    tenant_id: str,
+    ctx: ToolContext,
     order_id: str,
     amount: int | float,
     refund_type: str = "original_method",
@@ -146,20 +182,36 @@ def initiate_refund(
 ) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
             return {"success": False, "error": f"Order {order_id} not found."}
 
+        existing = db.execute(
+            select(RefundHistory).where(
+                RefundHistory.tenant_id == UUID(ctx.tenant_id),
+                RefundHistory.order_id == order_id,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"success": False, "error": f"Refund already exists for order {order_id}."}
+
         if item_id:
-            item = _find_item(db, order_id, item_id)
+            item = _find_item(db, ctx, order_id, item_id)
             if not item:
                 return {"success": False, "error": f"Item {item_id} not found."}
             product = item.product
+            item_category = item.category
         else:
             product = order.product
+            item_category = None
+
+        policy_block = _check_return_policy(ctx.tenant_id, order, item_category)
+        if policy_block:
+            return policy_block
 
         refund = RefundHistory(
-            tenant_id=UUID(tenant_id),
+            tenant_id=UUID(ctx.tenant_id),
+            customer_id=ctx.customer_id,
             customer_email=order.customer_email,
             order_id=order_id,
             amount=int(amount),
@@ -180,12 +232,17 @@ def initiate_refund(
         db.close()
 
 
-def get_shipping_label(tenant_id: str, order_id: str) -> dict:
+def get_shipping_label(ctx: ToolContext, order_id: str) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
             return {"success": False, "error": f"Order {order_id} not found."}
+
+        policy_block = _check_return_policy(ctx.tenant_id, order)
+        if policy_block:
+            return policy_block
+
         return {
             "success": True,
             "label_url": f"https://shipping.example.com/label/{order_id}",
@@ -196,10 +253,10 @@ def get_shipping_label(tenant_id: str, order_id: str) -> dict:
         db.close()
 
 
-def cancel_order(tenant_id: str, order_id: str) -> dict:
+def cancel_order(ctx: ToolContext, order_id: str) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
             return {"success": False, "error": f"Order {order_id} not found."}
 
@@ -223,10 +280,10 @@ def cancel_order(tenant_id: str, order_id: str) -> dict:
         db.close()
 
 
-def get_order_tracking(tenant_id: str, order_id: str) -> dict:
+def get_order_tracking(ctx: ToolContext, order_id: str) -> dict:
     db = _get_db()
     try:
-        order = _find_order(db, tenant_id, order_id)
+        order = _find_order(db, ctx, order_id)
         if not order:
             return {"error": f"Order {order_id} not found."}
 
@@ -250,16 +307,16 @@ def get_order_tracking(tenant_id: str, order_id: str) -> dict:
         db.close()
 
 
-def get_orders_by_email(tenant_id: str, customer_email: str) -> dict:
+def list_my_orders(ctx: ToolContext) -> dict:
     db = _get_db()
     try:
         stmt = select(Order).where(
-            Order.tenant_id == UUID(tenant_id),
-            Order.customer_email == customer_email,
+            Order.tenant_id == UUID(ctx.tenant_id),
+            Order.customer_id == ctx.customer_id,
         )
         orders = db.execute(stmt).scalars().all()
         if not orders:
-            return {"orders": [], "message": "No orders found for this email."}
+            return {"orders": [], "message": "No orders found."}
         return {
             "orders": [
                 {
