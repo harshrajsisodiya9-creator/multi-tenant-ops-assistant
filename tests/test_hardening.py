@@ -224,14 +224,17 @@ class TestWriteToolRegistry:
 # ── 8. Factory guard ────────────────────────────────────────────────
 
 class TestFactoryGuard:
-    def test_prod_env_mock_mode_raises(self, monkeypatch):
-        monkeypatch.setenv("APP_ENV", "prod")
-        monkeypatch.setenv("AGENT_MODE", "mock")
-        monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    def test_prod_env_mock_mode_raises(self):
+        """The guard raises RuntimeError when app_env=prod but agent_mode!=prod."""
+        from app.config import Setting, _check_factory_guard
 
-        import app.config
+        bad = Setting.model_construct(app_env="prod", agent_mode="mock")
         with pytest.raises(RuntimeError, match="APP_ENV=prod requires AGENT_MODE=prod"):
-            importlib.reload(app.config)
+            _check_factory_guard(bad)
 
-        monkeypatch.setenv("APP_ENV", "dev")
-        importlib.reload(app.config)
+    def test_prod_env_prod_mode_ok(self):
+        """No error when both are prod."""
+        from app.config import Setting, _check_factory_guard
+
+        ok = Setting.model_construct(app_env="prod", agent_mode="prod")
+        _check_factory_guard(ok)

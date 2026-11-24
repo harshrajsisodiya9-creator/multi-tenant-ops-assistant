@@ -7,6 +7,7 @@ from fastapi import UploadFile
 from fastembed import TextEmbedding
 from langchain_groq import ChatGroq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langsmith import traceable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -176,6 +177,7 @@ def search_similar_chunks(
     return list(db.execute(stmt).scalars().all())
 
 
+@traceable(name="faq_generation", run_type="llm")
 def generate_answer(question: str, context: str) -> str:
     if not question or not question.strip():
         raise ValueError("Question cannot be empty.")
@@ -199,6 +201,19 @@ def generate_answer(question: str, context: str) -> str:
         f"Question: {question}\n\nContext:\n{context}"
     )
     response = llm.invoke(prompt)
+
+    try:
+        from langsmith.run_helpers import get_current_run_tree
+        rt = get_current_run_tree()
+        if rt is not None:
+            resp_meta = getattr(response, "response_metadata", {})
+            rt.metadata = {**(rt.metadata or {}), **{
+                "model": setting.groq_model,
+                "token_usage": resp_meta.get("token_usage", {}),
+            }}
+    except Exception:
+        pass
+
     return str(getattr(response, "content", response)).strip()
 
 

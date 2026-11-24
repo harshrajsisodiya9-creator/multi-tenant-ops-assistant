@@ -1,8 +1,88 @@
-# Changes Made — `real_db` branch
+# Changes Made — `real_db` / `conditional` branches
 
-Branch: `real_db` | Base commit: `d25c682` | Date: 2026-11-23
+Branch: `conditional` (from `real_db`) | Base commit: `d25c682` | Date: 2026-11-23
 
-Security hardening (Steps 0–6) + production database integration for the multi-tenant AI customer support assistant.
+Security hardening (Steps 0–6) + production database integration + conditional edge routing for the multi-tenant AI customer support assistant.
+
+---
+
+## Conditional Edge Addition
+
+### Problem
+The LangGraph pipeline was fully linear — every request traversed all 8 nodes regardless of intent type. Only one conditional edge existed (after `escalation_handler`). Routing functions lacked `Literal` type hints, making LangSmith traces opaque. Multi-intent requests were processed sequentially inside a monolithic `intent_executor`.
+
+### Solution
+Added `Send()`-based parallel fan-out per intent with proper conditional edges at every decision point, so traces show which path each intent takes and multi-intent requests execute in parallel.
+
+### New Graph Topology
+
+```
+START → router → pre_check → [after_pre_check: bail/continue]
+  bail → bail_executor → response_agent → END
+  continue → policy_fan_out → [route_intents: Send() per intent]
+    → agent_executor / faq_executor / simple_executor (parallel)
+    → merge_results → [after_merge: needs_action_check/skip_action_check]
+      → action_check (if needed) → response_agent
+      → [after_response: complete/needs_escalation]
+        → END or escalation_handler → [after_escalation: follow_up/end]
+```
+
+### Files changed
+
+- **app/graph/state.py** — Added 3 new fields
+  - `current_intent: dict` — set by `Send()`, the specific intent for each executor
+  - `processed_results: Annotated[list[dict], operator.add]` — reducer merges parallel branch outputs
+  - `has_tool_calls: bool` — computed by `merge_results` for downstream routing
+
+- **app/graph/nodes/intent_executor.py** — Split monolithic executor into 5 nodes
+  - `agent_executor_node` — handles allow + refund/cancel_order via react agent subgraph; now handles `pending_approval` from the subgraph — sets status to `"awaiting_human"` with pending tool call details when approval is needed
+  - `faq_executor_node` — handles allow + faq/complaint via RAG hybrid search
+  - `simple_executor_node` — handles conversational, order_status, block, escalate, clarify
+  - `bail_executor_node` — handles pre_check bail results (tenant-inactive, low-confidence)
+  - `merge_results_node` — combines parallel `processed_results` into `intent_results`, computes `has_tool_calls` and `response_phase`
+  - `_run_react_agent` now returns full `dict` (was `tuple[str, list[dict]]`) to carry `pending_approval` through
+
+- **app/graph/builder.py** — Full rewrite with Send() + 5 conditional edges
+  - `after_pre_check` → `Literal["bail", "continue"]` — routes bail to `bail_executor`, else to `policy_fan_out`
+  - `route_intents` → returns `list[Send()]` — dispatches each pending intent to `agent_executor`, `faq_executor`, or `simple_executor`
+  - `after_merge` → `Literal["needs_action_check", "skip_action_check"]` — skips `action_check` when no tool calls
+  - `after_response_agent` → `Literal["complete", "needs_escalation"]` — routes to END or `escalation_handler`
+  - `after_escalation` → `Literal["follow_up", "end"]` — routes to `follow_up_response` or END
+
+- **app/graph/agent_prod/react_subgraph.py** — HITL approval gate + Literal type hints
+  - `_action_check_in_loop` renamed to `_hard_constraint_check` — only blocks hard violations (wrong refund type, cancel_blocked)
+  - New `_needs_approval(tool_name, tool_args, constraints)` — soft violations that pause for human approval:
+    - `constraints.needs_approval` flag with custom `approval_reasons`
+    - Refund amount > `GLOBAL_REFUND_CEILING` → `["GLOBAL_REFUND_CEILING"]`
+  - `tool_execute_node` calls `_needs_approval` after hard check — returns early with `pending_approval` dict and `PENDING APPROVAL` ToolMessage, halting the agent loop
+  - `ReactAgentState` gains `pending_approval: dict` field
+  - `should_continue` checks `pending_approval` → exits with `"done"`
+  - Return type: `Literal["done", "max_iterations", "continue_tools"]` with 3-way path_map
+
+- **app/graph/nodes/action_check.py** — Rewritten from post-hoc blocker to audit + verify node
+  - **Verify (prod only):** after write tools execute, re-reads DB to confirm state changes landed (refund record exists, order status changed to cancelled). Marks intent as `"failed"` if verification fails — prevents false success responses.
+  - **Audit (always):** flags anomalies on fulfilled tool calls:
+    - `NEAR_CEILING` — refund amount > 80% of global ceiling
+    - `MULTI_WRITE` — multiple write operations in a single request
+    - `RECENT_DELIVERY_REFUND` — refund on order delivered < 1 day ago
+    - `CANCEL_AFTER_SHIP` — cancel on order with shipped/in_transit status
+  - Flags are informational only — attached to `intent_results` as `audit_flags` for traces and response_agent visibility. No blocking (the in-loop `_action_check_in_loop` in react_subgraph handles that pre-execution).
+
+- **tests/conftest.py** *(new)* — Auto-fixture patching `AGENT_MODE=mock` for all tests
+  - Patches both the env var and the live `setting` object, so tests survive `importlib.reload(app.config)`
+  - Prod-mode tests (test_jwt_auth, test_hardening) are unaffected — they set up their own SQLite DBs directly
+
+- **tests/test_action_check.py** — Rewritten for audit + verify behavior
+  - `TestAuditFlags` — NEAR_CEILING, MULTI_WRITE, blocked-tools-skipped
+  - `TestPassthrough` — no tool calls, non-fulfilled skipped, clean cancel, multi-intent flag isolation
+  - `TestVerifySkippedInMock` — no verification dict in mock mode
+
+- **tests/test_intent_executor.py** — Updated for split executor nodes
+  - `TestSimpleExecutorNode` — order_status, block, escalate, clarify via `simple_executor_node`
+  - `TestMergeResultsNode` — mixed statuses, response_phase, has_tool_calls
+  - `TestBailExecutorNode` — bail block, skips non-pending
+
+- **app/graph/nodes/\_\_init\_\_.py** — Updated exports for split executor nodes
 
 ---
 

@@ -20,10 +20,13 @@ class Setting(BaseSettings):
     agent_mode: str = "mock"
 
 
-setting = Setting()
+def _check_factory_guard(s: Setting) -> None:
+    if s.app_env == "prod" and s.agent_mode != "prod":
+        raise RuntimeError(
+            f"APP_ENV=prod requires AGENT_MODE=prod (got '{s.agent_mode}'). "
+            "Mock data must never serve production traffic."
+        )
 
-if setting.app_env == "prod" and setting.agent_mode != "prod":
-    raise RuntimeError(
-        f"APP_ENV=prod requires AGENT_MODE=prod (got '{setting.agent_mode}'). "
-        "Mock data must never serve production traffic."
-    )
+
+setting = Setting()
+_check_factory_guard(setting)
