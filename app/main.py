@@ -124,16 +124,14 @@ def agent_endpoint(
     if payload.thread_id:
         thread_id = payload.thread_id
         owner = _THREAD_OWNERS.get(thread_id)
-        if owner is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Thread not found",
-            )
-        if owner != (claims.tenant_id, claims.customer_id):
+        if owner is not None and owner != (claims.tenant_id, claims.customer_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Thread belongs to a different customer",
             )
+        if owner is None:
+            thread_id = uuid4().hex
+            _THREAD_OWNERS[thread_id] = (claims.tenant_id, claims.customer_id)
     else:
         thread_id = uuid4().hex
         _THREAD_OWNERS[thread_id] = (claims.tenant_id, claims.customer_id)
@@ -146,6 +144,7 @@ def agent_endpoint(
             "user_message": payload.message,
             "customer_id": claims.customer_id,
             "customer_email": claims.email,
+            "conversation_id": thread_id,
         },
         config=config,
     )
@@ -158,6 +157,7 @@ def agent_endpoint(
         "router_output": state.get("router_output"),
         "policy_decision": state.get("policy_decision"),
         "response": state.get("response", ""),
+        "thread_id": thread_id,
     }
 
     if response_phase == "partial":
@@ -166,7 +166,6 @@ def agent_endpoint(
             if r.get("status") == "awaiting_human"
         ]
         result["status"] = "interrupted"
-        result["thread_id"] = thread_id
         result["escalations"] = escalations
 
     return result

@@ -5,6 +5,7 @@ import json
 from langchain_groq import ChatGroq
 
 from app.config import setting
+from app.graph.conversation_store import conversation_store
 from app.graph.state import AgentState
 
 RESPONSE_SYSTEM_PROMPT = """\
@@ -72,6 +73,28 @@ def response_agent_node(state: AgentState) -> dict:
 
     user_message = state.get("user_message", "")
 
+    context_parts: list[str] = []
+    history = state.get("conversation_history") or []
+    if history:
+        lines = [
+            f"{'Customer' if m['role'] == 'human' else 'Assistant'}: {m['content']}"
+            for m in history
+        ]
+        context_parts.append("Previous conversation:\n" + "\n".join(lines))
+
+    orders = state.get("orders_context") or []
+    if orders:
+        order_strs = [
+            f"  {o.get('order_id', '?')} — {o.get('product', '?')} ({o.get('status', '?')})"
+            for o in orders
+        ]
+        context_parts.append("Known orders:\n" + "\n".join(order_strs))
+
+    context_prefix = "\n\n".join(context_parts)
+    user_content = f"Customer message: {user_message}\n\nIntent results:\n{results_summary}"
+    if context_prefix:
+        user_content = f"{context_prefix}\n\n{user_content}"
+
     llm = ChatGroq(
         model=setting.groq_model,
         api_key=setting.groq_api_key,
@@ -81,11 +104,16 @@ def response_agent_node(state: AgentState) -> dict:
     response = llm.invoke(
         [
             {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": f"Customer message: {user_message}\n\nIntent results:\n{results_summary}",
-            },
+            {"role": "user", "content": user_content},
         ]
     )
+
+    tenant_id = state.get("tenant_id", "")
+    customer_id = state.get("customer_id") or ""
+    conversation_id = state.get("conversation_id", "")
+    if conversation_id:
+        conversation_store.add_ai_response(
+            tenant_id, customer_id, conversation_id, response.content,
+        )
 
     return {"response": response.content}

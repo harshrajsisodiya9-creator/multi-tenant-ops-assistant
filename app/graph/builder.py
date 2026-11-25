@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from app.graph.nodes.action_check import action_check_node
+from app.graph.nodes.before_router import before_router_node
 from app.graph.nodes.escalation_handler import escalation_handler_node
 from app.graph.nodes.intent_executor import (
     AGENT_INTENTS,
@@ -40,6 +41,10 @@ def route_intents(state: AgentState) -> list[Send]:
         "tenant_id": state["tenant_id"],
         "customer_id": state.get("customer_id"),
         "user_message": state["user_message"],
+        "conversation_id": state.get("conversation_id", ""),
+        "conversation_history": state.get("conversation_history", []),
+        "customer_context": state.get("customer_context", {}),
+        "orders_context": state.get("orders_context", []),
     }
 
     for result in state.get("intent_results") or []:
@@ -86,6 +91,7 @@ def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
     # --- nodes ---
+    graph.add_node("before_router", before_router_node)
     graph.add_node("router", router_node)
     graph.add_node("pre_check", pre_check_node)
     graph.add_node("bail_executor", bail_executor_node)
@@ -100,7 +106,8 @@ def build_graph() -> StateGraph:
     graph.add_node("follow_up_response", response_agent_node)
 
     # --- edges ---
-    graph.add_edge(START, "router")
+    graph.add_edge(START, "before_router")
+    graph.add_edge("before_router", "router")
     graph.add_edge("router", "pre_check")
 
     # 1) after pre_check: bail or continue to policy

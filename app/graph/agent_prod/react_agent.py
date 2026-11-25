@@ -49,6 +49,9 @@ def run_react_agent(
     constraints: dict | None = None,
     *,
     llm=None,
+    conversation_history: list[dict] | None = None,
+    customer_context: dict | None = None,
+    orders_context: list[dict] | None = None,
 ) -> dict:
     constraints = constraints or {}
 
@@ -82,6 +85,9 @@ def run_react_agent(
             "constraints": constraints,
             "tenant_id": ctx.tenant_id,
             "customer_id": ctx.customer_id,
+            "conversation_history": conversation_history or [],
+            "customer_context": customer_context or {},
+            "orders_context": orders_context or [],
         },
         config=config,
     )

@@ -9,6 +9,10 @@ class AgentState(TypedDict, total=False):
     customer_id: str | None
     user_message: str
     customer_email: str | None
+    conversation_id: str
+    conversation_history: list[dict]
+    customer_context: dict
+    orders_context: list[dict]
     router_output: dict | None
     policy_decision: dict | None
     response: str

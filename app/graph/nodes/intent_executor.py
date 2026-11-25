@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.graph.agent_factory import get_react_agent
+from app.graph.conversation_store import conversation_store
 from app.graph.data_access import get_order_scoped
 from app.graph.state import AgentState
 
@@ -70,6 +71,10 @@ def _run_react_agent(
     entities: dict,
     constraints: dict,
     user_message: str,
+    *,
+    conversation_history: list[dict] | None = None,
+    customer_context: dict | None = None,
+    orders_context: list[dict] | None = None,
 ) -> dict:
     run_react_agent = get_react_agent()
     order_id = entities.get("order_id", "")
@@ -84,6 +89,9 @@ def _run_react_agent(
             user_message=user_message,
             intent=intent,
             constraints=constraints,
+            conversation_history=conversation_history,
+            customer_context=customer_context,
+            orders_context=orders_context,
         )
     else:
         agent_result = run_react_agent(
@@ -165,6 +173,23 @@ AGENT_INTENTS = {"refund", "cancel_order"}
 # Send()-targeted executor nodes
 # ---------------------------------------------------------------------------
 
+def _extract_order_context(tool_calls: list[dict]) -> list[dict]:
+    orders: list[dict] = []
+    for tc in tool_calls:
+        if tc.get("blocked"):
+            continue
+        if tc.get("tool") == "get_order_details" and isinstance(tc.get("result"), dict):
+            r = tc["result"]
+            if r.get("order_id"):
+                orders.append({
+                    "order_id": r["order_id"],
+                    "product": r.get("product", ""),
+                    "status": r.get("status", ""),
+                    "amount": r.get("amount", 0),
+                })
+    return orders
+
+
 def agent_executor_node(state: AgentState) -> dict:
     """Handles allow + refund/cancel_order via the react agent subgraph."""
     result = dict(state["current_intent"])
@@ -177,8 +202,18 @@ def agent_executor_node(state: AgentState) -> dict:
     agent_out = _run_react_agent(
         tenant_id, customer_id, result["intent"],
         entities, constraints, user_message,
+        conversation_history=state.get("conversation_history"),
+        customer_context=state.get("customer_context"),
+        orders_context=state.get("orders_context"),
     )
     result["tool_calls"] = agent_out.get("tool_calls", [])
+
+    order_ctx = _extract_order_context(result["tool_calls"])
+    if order_ctx:
+        conversation_id = state.get("conversation_id", "")
+        conversation_store.update_orders_context(
+            tenant_id, customer_id or "", conversation_id, order_ctx,
+        )
 
     if agent_out.get("pending_approval"):
         pending = agent_out["pending_approval"]

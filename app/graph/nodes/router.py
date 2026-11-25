@@ -76,7 +76,7 @@ separate requests — a single request with context is one intent."""
 
 def _extract_entities(message: str) -> dict:
     entities: dict = {}
-    order_matches = ORDER_ID_PATTERN.findall(message)
+    order_matches = [m.upper() for m in ORDER_ID_PATTERN.findall(message)]
     if order_matches:
         entities["order_id"] = order_matches[0]
         if len(order_matches) > 1:
@@ -140,6 +140,24 @@ def _pre_check(message: str) -> tuple[str | None, dict, float, list[str]]:
     return None, entities, 0.0, escalation
 
 
+def _build_context_prefix(state: AgentState) -> str:
+    parts: list[str] = []
+    history = state.get("conversation_history") or []
+    if history:
+        lines = []
+        for m in history:
+            role = "Customer" if m["role"] == "human" else "Assistant"
+            lines.append(f"{role}: {m['content']}")
+        parts.append("Previous conversation:\n" + "\n".join(lines))
+
+    orders = state.get("orders_context") or []
+    if orders:
+        order_strs = [f"  {o.get('order_id', '?')} — {o.get('product', '?')} ({o.get('status', '?')})" for o in orders]
+        parts.append("Known orders:\n" + "\n".join(order_strs))
+
+    return "\n\n".join(parts)
+
+
 def router_node(state: AgentState) -> dict:
     message = state["user_message"]
     intent, entities, confidence, escalation = _pre_check(message)
@@ -160,10 +178,13 @@ def router_node(state: AgentState) -> dict:
     )
     structured_llm = llm.with_structured_output(RouterOutput)
 
+    context_prefix = _build_context_prefix(state)
+    user_content = f"{context_prefix}\n\nCurrent message: {message}" if context_prefix else message
+
     result: RouterOutput = structured_llm.invoke(
         [
             {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
-            {"role": "user", "content": message},
+            {"role": "user", "content": user_content},
         ]
     )
 
