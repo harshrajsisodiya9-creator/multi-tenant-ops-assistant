@@ -15,11 +15,10 @@ from app.graph.agent_prod.tool_context import ToolContext
 
 INTENT_TOOLS: dict[str, list[str]] = {
     "refund": [
-        "get_order_details", "get_return_eligibility",
-        "initiate_refund", "initiate_return", "get_shipping_label",
+        "get_order_details", "get_return_eligibility", "list_my_orders",
     ],
     "cancel_order": [
-        "get_order_details", "get_order_tracking", "cancel_order",
+        "get_order_details", "get_order_tracking", "list_my_orders",
     ],
 }
 
@@ -49,9 +48,6 @@ def run_react_agent(
     constraints: dict | None = None,
     *,
     llm=None,
-    conversation_history: list[dict] | None = None,
-    customer_context: dict | None = None,
-    orders_context: list[dict] | None = None,
 ) -> dict:
     constraints = constraints or {}
 
@@ -85,9 +81,6 @@ def run_react_agent(
             "constraints": constraints,
             "tenant_id": ctx.tenant_id,
             "customer_id": ctx.customer_id,
-            "conversation_history": conversation_history or [],
-            "customer_context": customer_context or {},
-            "orders_context": orders_context or [],
         },
         config=config,
     )

@@ -26,7 +26,8 @@ Rules:
 - If multiple intents: weave them into one coherent response, don't use bullet points or numbering
 - Be concise, professional, and empathetic
 - Do NOT invent information beyond what's in the domain_result
-- Do NOT mention internal codes, policy names, or system details"""
+- Do NOT mention internal codes, policy names, or system details
+- Do NOT repeat or summarize information from previous turns — only present what is new in the current intent results"""
 
 FOLLOW_UP_SYSTEM_PROMPT = """\
 You are a customer support response composer. You are writing a FOLLOW-UP message.
@@ -47,7 +48,9 @@ def response_agent_node(state: AgentState) -> dict:
     intent_results = state.get("intent_results") or []
 
     if not intent_results:
-        return {"response": "I'm sorry, I couldn't process your request. Please try again."}
+        return {
+            "response": "I'm sorry, I couldn't process your request. Please try again."
+        }
 
     if response_phase == "follow_up":
         resolved = [r for r in intent_results if r.get("_newly_resolved")]
@@ -73,31 +76,13 @@ def response_agent_node(state: AgentState) -> dict:
 
     user_message = state.get("user_message", "")
 
-    context_parts: list[str] = []
-    history = state.get("conversation_history") or []
-    if history:
-        lines = [
-            f"{'Customer' if m['role'] == 'human' else 'Assistant'}: {m['content']}"
-            for m in history
-        ]
-        context_parts.append("Previous conversation:\n" + "\n".join(lines))
-
-    orders = state.get("orders_context") or []
-    if orders:
-        order_strs = [
-            f"  {o.get('order_id', '?')} — {o.get('product', '?')} ({o.get('status', '?')})"
-            for o in orders
-        ]
-        context_parts.append("Known orders:\n" + "\n".join(order_strs))
-
-    context_prefix = "\n\n".join(context_parts)
-    user_content = f"Customer message: {user_message}\n\nIntent results:\n{results_summary}"
-    if context_prefix:
-        user_content = f"{context_prefix}\n\n{user_content}"
+    user_content = (
+        f"Customer message: {user_message}\n\nIntent results:\n{results_summary}"
+    )
 
     llm = ChatGroq(
         model=setting.groq_model,
-        api_key=setting.groq_api_key,
+        api_key=setting.groq_api_key,  # type: ignore
         temperature=0.3,
     )
 
@@ -113,7 +98,10 @@ def response_agent_node(state: AgentState) -> dict:
     conversation_id = state.get("conversation_id", "")
     if conversation_id:
         conversation_store.add_ai_response(
-            tenant_id, customer_id, conversation_id, response.content,
+            tenant_id,
+            customer_id,
+            conversation_id,
+            response.content,
         )
 
     return {"response": response.content}

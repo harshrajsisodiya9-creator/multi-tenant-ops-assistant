@@ -6,27 +6,30 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
+from app.graph.execution_registry import WRITE_INTENTS
 from app.graph.nodes.action_check import action_check_node
 from app.graph.nodes.before_router import before_router_node
+from app.graph.nodes.conditional_executor import conditional_executor_node
 from app.graph.nodes.escalation_handler import escalation_handler_node
 from app.graph.nodes.intent_executor import (
     AGENT_INTENTS,
-    agent_executor_node,
     bail_executor_node,
-    faq_executor_node,
+    knowledge_lookup_node,
+    lookup_agent_node,
     merge_results_node,
-    simple_executor_node,
+    quick_resolver_node,
 )
 from app.graph.nodes.policy_fan_out import policy_fan_out_node
 from app.graph.nodes.pre_check import pre_check_node
 from app.graph.nodes.response_agent import response_agent_node
 from app.graph.nodes.router import router_node
+from app.graph.nodes.write_executor import write_executor_node
 from app.graph.state import AgentState
-
 
 # ---------------------------------------------------------------------------
 # Routing functions — Literal return types show in LangSmith traces
 # ---------------------------------------------------------------------------
+
 
 def after_pre_check(state: AgentState) -> Literal["bail", "continue"]:
     if state.get("pre_check_bail"):
@@ -38,11 +41,10 @@ def route_intents(state: AgentState) -> list[Send]:
     """Send() fan-out: one Send per pending intent, dispatched to the right executor."""
     sends: list[Send] = []
     base = {
-        "tenant_id": state["tenant_id"],
+        "tenant_id": state["tenant_id"],  # type: ignore
         "customer_id": state.get("customer_id"),
-        "user_message": state["user_message"],
+        "user_message": state["user_message"],  # type: ignore
         "conversation_id": state.get("conversation_id", ""),
-        "conversation_history": state.get("conversation_history", []),
         "customer_context": state.get("customer_context", {}),
         "orders_context": state.get("orders_context", []),
     }
@@ -54,18 +56,25 @@ def route_intents(state: AgentState) -> list[Send]:
         payload = {**base, "current_intent": result}
         action = result["policy_action"]
         intent = result["intent"]
+        has_conditional = bool(result.get("conditional"))
 
-        if action == "allow" and intent in AGENT_INTENTS:
-            sends.append(Send("agent_executor", payload))
+        if action == "allow" and has_conditional:
+            sends.append(Send("conditional_executor", payload))
+        elif action == "allow" and intent in WRITE_INTENTS:
+            sends.append(Send("write_executor", payload))
+        elif action == "allow" and intent in AGENT_INTENTS:
+            sends.append(Send("lookup_agent", payload))
         elif action == "allow" and intent in ("faq", "complaint"):
-            sends.append(Send("faq_executor", payload))
+            sends.append(Send("knowledge_lookup", payload))
         else:
-            sends.append(Send("simple_executor", payload))
+            sends.append(Send("quick_resolver", payload))
 
     return sends
 
 
-def after_merge(state: AgentState) -> Literal["needs_action_check", "skip_action_check"]:
+def after_merge(
+    state: AgentState,
+) -> Literal["needs_action_check", "skip_action_check"]:
     if state.get("has_tool_calls"):
         return "needs_action_check"
     return "skip_action_check"
@@ -87,6 +96,7 @@ def after_escalation(state: AgentState) -> Literal["follow_up", "end"]:
 # Graph construction
 # ---------------------------------------------------------------------------
 
+
 def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
@@ -96,9 +106,11 @@ def build_graph() -> StateGraph:
     graph.add_node("pre_check", pre_check_node)
     graph.add_node("bail_executor", bail_executor_node)
     graph.add_node("policy_fan_out", policy_fan_out_node)
-    graph.add_node("agent_executor", agent_executor_node)
-    graph.add_node("faq_executor", faq_executor_node)
-    graph.add_node("simple_executor", simple_executor_node)
+    graph.add_node("lookup_agent", lookup_agent_node)
+    graph.add_node("write_executor", write_executor_node)
+    graph.add_node("conditional_executor", conditional_executor_node)
+    graph.add_node("knowledge_lookup", knowledge_lookup_node)
+    graph.add_node("quick_resolver", quick_resolver_node)
     graph.add_node("merge_results", merge_results_node)
     graph.add_node("action_check", action_check_node)
     graph.add_node("response_agent", response_agent_node)
@@ -111,10 +123,14 @@ def build_graph() -> StateGraph:
     graph.add_edge("router", "pre_check")
 
     # 1) after pre_check: bail or continue to policy
-    graph.add_conditional_edges("pre_check", after_pre_check, {
-        "bail": "bail_executor",
-        "continue": "policy_fan_out",
-    })
+    graph.add_conditional_edges(
+        "pre_check",
+        after_pre_check,
+        {
+            "bail": "bail_executor",
+            "continue": "policy_fan_out",
+        },
+    )
 
     # bail path goes straight to response_agent
     graph.add_edge("bail_executor", "response_agent")
@@ -123,29 +139,43 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges("policy_fan_out", route_intents)
 
     # all executor branches converge at merge_results
-    graph.add_edge("agent_executor", "merge_results")
-    graph.add_edge("faq_executor", "merge_results")
-    graph.add_edge("simple_executor", "merge_results")
+    graph.add_edge("lookup_agent", "merge_results")
+    graph.add_edge("write_executor", "merge_results")
+    graph.add_edge("conditional_executor", "merge_results")
+    graph.add_edge("knowledge_lookup", "merge_results")
+    graph.add_edge("quick_resolver", "merge_results")
 
     # 3) after merge: action_check needed?
-    graph.add_conditional_edges("merge_results", after_merge, {
-        "needs_action_check": "action_check",
-        "skip_action_check": "response_agent",
-    })
+    graph.add_conditional_edges(
+        "merge_results",
+        after_merge,
+        {
+            "needs_action_check": "action_check",
+            "skip_action_check": "response_agent",
+        },
+    )
     graph.add_edge("action_check", "response_agent")
 
     # 4) after response_agent: done or escalation?
-    graph.add_conditional_edges("response_agent", after_response_agent, {
-        "complete": END,
-        "needs_escalation": "escalation_handler",
-    })
+    graph.add_conditional_edges(
+        "response_agent",
+        after_response_agent,
+        {
+            "complete": END,
+            "needs_escalation": "escalation_handler",
+        },
+    )
 
     # 5) after escalation: follow-up response or end?
-    graph.add_conditional_edges("escalation_handler", after_escalation, {
-        "follow_up": "follow_up_response",
-        "end": END,
-    })
+    graph.add_conditional_edges(
+        "escalation_handler",
+        after_escalation,
+        {
+            "follow_up": "follow_up_response",
+            "end": END,
+        },
+    )
     graph.add_edge("follow_up_response", END)
 
     checkpointer = MemorySaver()
-    return graph.compile(checkpointer=checkpointer)
+    return graph.compile(checkpointer=checkpointer)  # type: ignore

@@ -278,7 +278,7 @@ class TestRouterContextInjection:
             ],
         }
         prefix = _build_context_prefix(state)
-        assert "Previous conversation:" in prefix
+        assert "previous conversations" in prefix
         assert "cancel order ORD-1" in prefix
 
     def test_context_prefix_with_orders(self):
@@ -306,28 +306,55 @@ class TestRouterContextInjection:
         assert prefix == ""
 
 
-# ── 8. ReAct context injection ──────────────────────────────────────
+# ── 8. ReAct agent does not inject context into messages ──────────
 
-class TestReActContextInjection:
-    def test_build_react_context_with_history(self):
-        from app.graph.agent_prod.react_subgraph import _build_react_context
+class TestReActNoContextInjection:
+    def test_reason_node_no_context_system_message(self):
+        """reason_node must not insert a 'Context from prior turns' system message."""
+        from unittest.mock import MagicMock, patch
+
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        fake_response = AIMessage(content="Order ORD-1 is shipped.")
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.invoke.return_value = fake_response
+
+        from app.graph.agent_prod.react_subgraph import reason_node
 
         state = {
-            "conversation_history": [
-                {"role": "human", "content": "refund ORD-1"},
-                {"role": "assistant", "content": "Processing..."},
+            "messages": [
+                SystemMessage(content="You are a tool-calling agent."),
+                HumanMessage(content="Order: ORD-1\nRequest: cancel"),
             ],
-            "orders_context": [],
+            "tool_call_log": [],
+            "iteration": 0,
+            "final_result": "",
+            "allowed_tools": ["get_order_details"],
+            "order_id": "ORD-1",
+            "constraints": {},
+            "tenant_id": "t1",
+            "customer_id": "c1",
+            "pending_approval": {},
         }
-        ctx = _build_react_context(state)
-        assert ctx is not None
-        assert "refund ORD-1" in ctx
 
-    def test_build_react_context_empty(self):
-        from app.graph.agent_prod.react_subgraph import _build_react_context
+        result = reason_node(state, {"configurable": {"llm": mock_llm}})
 
-        state = {"conversation_history": [], "orders_context": []}
-        assert _build_react_context(state) is None
+        invoked_messages = mock_llm.invoke.call_args[0][0]
+        system_contents = [
+            m.content for m in invoked_messages if isinstance(m, SystemMessage)
+        ]
+        assert not any("Context from prior turns" in c for c in system_contents)
+        assert result["final_result"] == "Order ORD-1 is shipped."
+
+    def test_react_agent_state_has_no_context_fields(self):
+        """ReactAgentState should not carry conversation_history or orders_context."""
+        from app.graph.agent_prod.react_subgraph import ReactAgentState
+
+        fields = ReactAgentState.__annotations__
+        assert "conversation_history" not in fields
+        assert "orders_context" not in fields
+        assert "customer_context" not in fields
 
 
 # ── 9. AgentState has new fields ────────────────────────────────────
@@ -365,11 +392,10 @@ class TestReactAgentStateFields:
             "tenant_id": T,
             "customer_id": C,
             "pending_approval": {},
-            "conversation_history": [{"role": "human", "content": "hi"}],
             "customer_context": {"email": "a@b.com"},
             "orders_context": [{"order_id": "ORD-1"}],
         }
-        assert state["conversation_history"] == [{"role": "human", "content": "hi"}]
+        assert state["customer_context"] == {"email": "a@b.com"}
 
 
 # ── 11. Clear and reset ─────────────────────────────────────────────
@@ -453,7 +479,7 @@ class TestFanOutContext:
         assert len(sends) == 1
         payload = sends[0].arg
         assert payload["conversation_id"] == CONV
-        assert payload["conversation_history"] == [{"role": "human", "content": "prior"}]
+        assert "conversation_history" not in payload
         assert payload["orders_context"] == [{"order_id": "ORD-1"}]
 
 

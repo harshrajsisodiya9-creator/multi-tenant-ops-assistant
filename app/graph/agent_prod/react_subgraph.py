@@ -29,6 +29,8 @@ def _build_lc_tools() -> dict[str, StructuredTool]:
     tools: dict[str, StructuredTool] = {}
 
     for name, fn in TOOL_REGISTRY.items():
+        if name in WRITE_TOOLS:
+            continue
         sig = inspect.signature(fn)
         hints = get_type_hints(fn)
         fields: dict = {}
@@ -69,9 +71,6 @@ class ReactAgentState(TypedDict):
     tenant_id: str
     customer_id: str
     pending_approval: dict
-    conversation_history: list[dict]
-    customer_context: dict
-    orders_context: list[dict]
 
 
 def _hard_constraint_check(tool_name: str, tool_args: dict, constraints: dict) -> str | None:
@@ -102,27 +101,6 @@ def _needs_approval(tool_name: str, tool_args: dict, constraints: dict) -> list[
     return None
 
 
-def _build_react_context(state: ReactAgentState) -> str | None:
-    parts: list[str] = []
-    history = state.get("conversation_history") or []
-    if history:
-        lines = [
-            f"{'Customer' if m['role'] == 'human' else 'Assistant'}: {m['content']}"
-            for m in history
-        ]
-        parts.append("Previous conversation:\n" + "\n".join(lines))
-
-    orders = state.get("orders_context") or []
-    if orders:
-        order_strs = [
-            f"  {o.get('order_id', '?')} — {o.get('product', '?')} ({o.get('status', '?')})"
-            for o in orders
-        ]
-        parts.append("Known orders:\n" + "\n".join(order_strs))
-
-    return "\n\n".join(parts) if parts else None
-
-
 def reason_node(state: ReactAgentState, config: RunnableConfig) -> dict:
     allowed = state["allowed_tools"]
     lc_tools = [_LC_TOOLS[n] for n in allowed if n in _LC_TOOLS]
@@ -140,11 +118,6 @@ def reason_node(state: ReactAgentState, config: RunnableConfig) -> dict:
         )
 
     messages = list(state["messages"])
-    if state.get("iteration", 0) == 0:
-        ctx_text = _build_react_context(state)
-        if ctx_text:
-            from langchain_core.messages import SystemMessage as _Sys
-            messages.insert(1, _Sys(content=f"Context from prior turns:\n{ctx_text}"))
 
     response: AIMessage = llm.bind_tools(lc_tools).invoke(messages)
 
@@ -172,6 +145,14 @@ def tool_execute_node(state: ReactAgentState) -> dict:
 
     for tc in last.tool_calls:
         name, args, call_id = tc["name"], tc["args"], tc["id"]
+
+        if name in WRITE_TOOLS:
+            messages.append(ToolMessage(
+                content=f"BLOCKED: Tool '{name}' is a write operation and cannot be executed in the read-only agent.",
+                tool_call_id=call_id,
+            ))
+            log.append({"tool": name, "args": args, "blocked": True, "reason": "write tool blocked in read-only agent"})
+            continue
 
         if name not in allowed:
             messages.append(ToolMessage(

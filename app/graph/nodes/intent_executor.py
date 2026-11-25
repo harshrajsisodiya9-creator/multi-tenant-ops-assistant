@@ -71,10 +71,6 @@ def _run_react_agent(
     entities: dict,
     constraints: dict,
     user_message: str,
-    *,
-    conversation_history: list[dict] | None = None,
-    customer_context: dict | None = None,
-    orders_context: list[dict] | None = None,
 ) -> dict:
     run_react_agent = get_react_agent()
     order_id = entities.get("order_id", "")
@@ -89,9 +85,6 @@ def _run_react_agent(
             user_message=user_message,
             intent=intent,
             constraints=constraints,
-            conversation_history=conversation_history,
-            customer_context=customer_context,
-            orders_context=orders_context,
         )
     else:
         agent_result = run_react_agent(
@@ -166,7 +159,7 @@ CONVERSATIONAL_RESPONSES = {
     "chitchat": "I'm here to help with your orders and account. What can I do for you?",
 }
 
-AGENT_INTENTS = {"refund", "cancel_order"}
+AGENT_INTENTS: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -190,8 +183,8 @@ def _extract_order_context(tool_calls: list[dict]) -> list[dict]:
     return orders
 
 
-def agent_executor_node(state: AgentState) -> dict:
-    """Handles allow + refund/cancel_order via the react agent subgraph."""
+def lookup_agent_node(state: AgentState) -> dict:
+    """Read-only ReAct agent: fetches order details and checks eligibility."""
     result = dict(state["current_intent"])
     tenant_id = state["tenant_id"]
     customer_id = state.get("customer_id")
@@ -202,9 +195,6 @@ def agent_executor_node(state: AgentState) -> dict:
     agent_out = _run_react_agent(
         tenant_id, customer_id, result["intent"],
         entities, constraints, user_message,
-        conversation_history=state.get("conversation_history"),
-        customer_context=state.get("customer_context"),
-        orders_context=state.get("orders_context"),
     )
     result["tool_calls"] = agent_out.get("tool_calls", [])
 
@@ -231,8 +221,8 @@ def agent_executor_node(state: AgentState) -> dict:
     return {"processed_results": [result]}
 
 
-def faq_executor_node(state: AgentState) -> dict:
-    """Handles allow + faq/complaint via RAG hybrid search."""
+def knowledge_lookup_node(state: AgentState) -> dict:
+    """Read-only RAG lookup: answers FAQs and complaints via hybrid search."""
     result = dict(state["current_intent"])
     tenant_id = state["tenant_id"]
     user_message = state["user_message"]
@@ -242,8 +232,8 @@ def faq_executor_node(state: AgentState) -> dict:
     return {"processed_results": [result]}
 
 
-def simple_executor_node(state: AgentState) -> dict:
-    """Handles conversational, order_status, block, escalate, clarify intents."""
+def quick_resolver_node(state: AgentState) -> dict:
+    """Fast read-only resolver: status lookups, canned responses, blocks, and clarifications."""
     result = dict(state["current_intent"])
     tenant_id = state["tenant_id"]
     customer_id = state.get("customer_id")
