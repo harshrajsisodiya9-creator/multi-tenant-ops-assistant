@@ -76,6 +76,38 @@ def _resolve_order_entity(
     )
 
 
+def _expand_multi_order_intents(
+    all_intents: list[tuple[str, dict, float]],
+) -> list[tuple[str, dict, float]]:
+    """When multiple order IDs are present, produce one intent per unique order."""
+    if not all_intents:
+        return all_intents
+
+    primary_intent, primary_entities, primary_conf = all_intents[0]
+    all_ids = primary_entities.get("all_order_ids", [])
+
+    if len(all_ids) <= 1:
+        return all_intents
+
+    assigned: set[str] = set()
+    expanded: list[tuple[str, dict, float]] = []
+
+    for intent, entities, conf in all_intents:
+        oid = entities.get("order_id")
+        if oid and oid in all_ids and oid not in assigned:
+            assigned.add(oid)
+            clean = {k: v for k, v in entities.items() if k != "all_order_ids"}
+            expanded.append((intent, clean, conf))
+
+    for oid in all_ids:
+        if oid not in assigned:
+            clean = {k: v for k, v in primary_entities.items() if k != "all_order_ids"}
+            clean["order_id"] = oid
+            expanded.append((primary_intent, clean, primary_conf))
+
+    return expanded
+
+
 def _build_gate_context(
     tenant_id: str,
     customer_id: str,
@@ -143,11 +175,15 @@ def policy_fan_out_node(state: AgentState) -> dict:
     customer_id = state.get("customer_id") or ""
     tenant_info = get_tenant_info(tenant_id) or {"active": True}
 
+    conditional_data = router_output.conditional.model_dump() if router_output.conditional else None
+
     all_intents: list[tuple[str, dict, float]] = [
         (router_output.intent, router_output.entities, router_output.confidence),
     ]
     for sub in router_output.sub_intents:
         all_intents.append((sub.intent, sub.entities, sub.confidence))
+
+    all_intents = _expand_multi_order_intents(all_intents)
 
     intent_results: list[dict] = []
     primary_decision = None
@@ -186,6 +222,7 @@ def policy_fan_out_node(state: AgentState) -> dict:
             reason_code=decision.reason_code,
             constraints=decision.constraints,
             status="pending",
+            conditional=conditional_data if i == 0 else None,
         )
         intent_results.append(result.model_dump())
 

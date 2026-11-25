@@ -478,6 +478,7 @@ body {
 .order-status.processing { background: #78350f; color: #fcd34d; }
 .order-status.pending   { background: #374151; color: #d1d5db; }
 .order-status.active    { background: #064e3b; color: #34d399; }
+.order-status.cancelled { background: #7f1d1d; color: #fca5a5; }
 
 .sidebar-back {
   padding: 16px 20px;
@@ -864,7 +865,19 @@ const COMPANIES = {
       "CUST-MM-001": [
         { order_id: "ORD-MM-1001", product: "Wireless Headphones", category: "electronics", amount: 4500, status: "delivered", order_date: "2026-09-10" },
         { order_id: "ORD-MM-1005", product: "Winter Jacket", category: "clothing", amount: 3800, status: "processing", order_date: "2026-10-02" },
-        { order_id: "ORD-MM-1009", product: "Wireless Mouse + Cotton Polo", category: "electronics", amount: 5300, status: "delivered", order_date: "2026-09-18" }
+        { order_id: "ORD-MM-1009", product: "Wireless Mouse + Cotton Polo", category: "electronics", amount: 5300, status: "delivered", order_date: "2026-09-18" },
+        { order_id: "ORD-MM-1011", product: "Mechanical Keyboard", category: "electronics", amount: 7500, status: "delivered", order_date: "2026-08-05" },
+        { order_id: "ORD-MM-1012", product: "Organic Veggie Box", category: "perishables", amount: 1200, status: "cancelled", order_date: "2026-08-15" },
+        { order_id: "ORD-MM-1013", product: "Running Shoes", category: "clothing", amount: 5900, status: "shipped", order_date: "2026-10-18" },
+        { order_id: "ORD-MM-1014", product: "Webcam HD Pro", category: "electronics", amount: 3200, status: "processing", order_date: "2026-10-22" },
+        { order_id: "ORD-MM-1015", product: "Denim Jeans + Belt", category: "clothing", amount: 4200, status: "shipped", order_date: "2026-10-16" },
+        { order_id: "ORD-MM-1016", product: "Portable Charger 20000mAh", category: "electronics", amount: 1800, status: "shipped", order_date: "2026-10-10" },
+        { order_id: "ORD-MM-1017", product: "Premium Coffee Beans 1kg", category: "perishables", amount: 950, status: "pending", order_date: "2026-10-25" },
+        { order_id: "ORD-MM-1018", product: "Smart Watch + Screen Guard", category: "electronics", amount: 12500, status: "processing", order_date: "2026-10-15" },
+        { order_id: "ORD-MM-1019", product: "Yoga Mat + Resistance Bands", category: "clothing", amount: 2600, status: "cancelled", order_date: "2026-10-05" },
+        { order_id: "ORD-MM-1020", product: "MegaMart Plus Annual", category: "subscription", amount: 4999, status: "active", order_date: "2026-07-15" },
+        { order_id: "ORD-MM-1021", product: "Noise-Cancelling Earbuds", category: "electronics", amount: 6800, status: "pending", order_date: "2026-10-20" },
+        { order_id: "ORD-MM-1022", product: "Gourmet Cheese Hamper", category: "perishables", amount: 3500, status: "pending", order_date: "2026-10-28" }
       ],
       "CUST-MM-002": [
         { order_id: "ORD-MM-1002", product: "Cotton T-Shirt", category: "clothing", amount: 1200, status: "delivered", order_date: "2026-09-05" },
@@ -1301,7 +1314,7 @@ async function sendMessage() {
 
     const data = await resp.json();
 
-    if (data.thread_id && !threadId) {
+    if (data.thread_id) {
       threadId = data.thread_id;
       document.getElementById("chat-thread-id").textContent = `Thread: ${threadId.substring(0, 12)}...`;
     }

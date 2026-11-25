@@ -130,7 +130,6 @@ def agent_endpoint(
                 detail="Thread belongs to a different customer",
             )
         if owner is None:
-            thread_id = uuid4().hex
             _THREAD_OWNERS[thread_id] = (claims.tenant_id, claims.customer_id)
     else:
         thread_id = uuid4().hex

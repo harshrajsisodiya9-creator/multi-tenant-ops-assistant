@@ -17,6 +17,38 @@ INTENT_TYPES = Literal[
     "goodbye",
 ]
 
+CONDITION_FIELDS = Literal[
+    "order_status",
+    "fulfillment_status",
+    "is_refundable",
+    "is_return_eligible",
+]
+
+CONDITION_OPERATORS = Literal[
+    "equals",
+    "not_equals",
+    "in",
+    "not_in",
+    "is_true",
+    "is_false",
+]
+
+REQUEST_TYPES = Literal[
+    "conditional_action",
+    "conditional_question",
+]
+
+
+class Condition(BaseModel):
+    field: CONDITION_FIELDS
+    operator: CONDITION_OPERATORS
+    value: str | list[str] = ""
+
+
+class ConditionalAction(BaseModel):
+    request_type: REQUEST_TYPES
+    condition: Condition
+
 
 class SubIntent(BaseModel):
     intent: INTENT_TYPES
@@ -30,6 +62,7 @@ class RouterOutput(BaseModel):
     confidence: float
     escalation_signals: list[str] = []
     sub_intents: list[SubIntent] = []
+    conditional: ConditionalAction | None = None
 
 
 class PolicyDecision(BaseModel):
@@ -47,3 +80,4 @@ class IntentResult(BaseModel):
     domain_result: str = ""
     status: str = "pending"
     tool_calls: list[dict] = []
+    conditional: dict | None = None

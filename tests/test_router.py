@@ -92,7 +92,7 @@ def test_is_informational(message: str, expected: bool):
 
 @pytest.mark.parametrize("message, expected_intent, high_confidence", PRE_CHECK_CASES)
 def test_pre_check(message: str, expected_intent: str | None, high_confidence: bool):
-    intent, entities, confidence, escalation = _pre_check(message)
+    intent, entities, confidence, escalation, _is_conditional = _pre_check(message)
     assert intent == expected_intent
     if high_confidence:
         assert confidence >= 0.9
@@ -131,7 +131,7 @@ def test_count_keyword_matches(message: str, expected_count: int):
 
 
 def test_pre_check_multi_intent_forces_llm():
-    intent, entities, confidence, escalation = _pre_check(
+    intent, entities, confidence, escalation, _is_conditional = _pre_check(
         "I want a refund and cancel my order"
     )
     assert intent is None
@@ -139,7 +139,7 @@ def test_pre_check_multi_intent_forces_llm():
 
 
 def test_pre_check_conjunction_with_single_keyword_forces_llm():
-    intent, entities, confidence, escalation = _pre_check(
+    intent, entities, confidence, escalation, _is_conditional = _pre_check(
         "Cancel my order and also check something"
     )
     assert intent is None
@@ -147,7 +147,7 @@ def test_pre_check_conjunction_with_single_keyword_forces_llm():
 
 
 def test_pre_check_single_intent_still_works():
-    intent, entities, confidence, escalation = _pre_check(
+    intent, entities, confidence, escalation, _is_conditional = _pre_check(
         "Track my order ORD-MM-1001"
     )
     assert intent == "order_status"

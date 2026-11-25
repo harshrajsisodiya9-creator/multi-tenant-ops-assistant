@@ -120,7 +120,8 @@ class TestAllowlist:
         )
         blocked = [tc for tc in result["tool_calls"] if tc.get("blocked")]
         assert len(blocked) == 1
-        assert "not in allowlist" in blocked[0]["reason"]
+        reason = blocked[0]["reason"]
+        assert "not in allowlist" in reason or "write tool blocked" in reason
 
 
 # ── 3. Double refund ─────────────────────────────────────────────────

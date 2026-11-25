@@ -11,7 +11,7 @@ from app.graph.nodes.intent_executor import (
     _execute_refund,
     bail_executor_node,
     merge_results_node,
-    simple_executor_node,
+    quick_resolver_node,
 )
 
 
@@ -115,7 +115,7 @@ class TestSimpleExecutorNode:
                 "status": "pending",
             },
         }
-        result = simple_executor_node(state)
+        result = quick_resolver_node(state)
         assert len(result["processed_results"]) == 1
         r = result["processed_results"][0]
         assert r["status"] == "fulfilled"
@@ -135,7 +135,7 @@ class TestSimpleExecutorNode:
                 "status": "pending",
             },
         }
-        result = simple_executor_node(state)
+        result = quick_resolver_node(state)
         assert result["processed_results"][0]["status"] == "blocked"
 
     def test_escalate(self):
@@ -152,7 +152,7 @@ class TestSimpleExecutorNode:
                 "status": "pending",
             },
         }
-        result = simple_executor_node(state)
+        result = quick_resolver_node(state)
         assert result["processed_results"][0]["status"] == "awaiting_human"
 
     def test_clarify(self):
@@ -169,7 +169,7 @@ class TestSimpleExecutorNode:
                 "status": "pending",
             },
         }
-        result = simple_executor_node(state)
+        result = quick_resolver_node(state)
         assert result["processed_results"][0]["status"] == "needs_clarification"
 
 
