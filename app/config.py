@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(PROJECT_DIR / ".env", override=True)
+load_dotenv(PROJECT_DIR / ".env", override=False)
 
 
 class Setting(BaseSettings):

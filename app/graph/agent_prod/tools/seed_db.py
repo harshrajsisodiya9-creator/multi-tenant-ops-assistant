@@ -22,6 +22,10 @@ def seed_orders():
     db = SessionLocal()
     try:
         tenants = {t.name: t for t in db.query(Tenant).all()}
+        # Tracked in memory: SessionLocal has autoflush=False, so queries here cannot see
+        # rows added earlier in this transaction.
+        customer_ids_by_tenant: dict[str, dict[str, str]] = {}
+        order_owner_by_tenant: dict[str, dict[str, str]] = {}
 
         for tenant_name, orders in MOCK_ORDERS.items():
             tenant = tenants.get(tenant_name)
@@ -31,6 +35,9 @@ def seed_orders():
 
             prefix = _TENANT_PREFIX.get(tenant_name, tenant_name[:2].upper())
             emails_seen: dict[str, str] = {}
+            order_owner: dict[str, str] = {}
+            customer_ids_by_tenant[tenant_name] = emails_seen
+            order_owner_by_tenant[tenant_name] = order_owner
             customer_seq = 0
 
             for order_data in orders.values():
@@ -55,7 +62,11 @@ def seed_orders():
                 if existing:
                     if not existing.customer_id:
                         existing.customer_id = emails_seen[email]
+                    if existing.tenant_id == tenant.id:
+                        order_owner[existing.order_id] = existing.customer_id
                     continue
+
+                order_owner[order_data["order_id"]] = emails_seen[email]
 
                 order = Order(
                     order_id=order_data["order_id"],
@@ -90,24 +101,36 @@ def seed_orders():
             if not tenant:
                 continue
 
+            customer_ids = customer_ids_by_tenant.get(tenant_name, {})
+            order_owner = order_owner_by_tenant.get(tenant_name, {})
+
             for email, refunds in emails.items():
+                cust_id = customer_ids.get(email)
                 for ref in refunds:
+                    order_id = ref["order_id"]
+                    if cust_id is None:
+                        print(f"Skipping refund {order_id} ({tenant_name}): no seeded customer for {email}")
+                        continue
+                    owner = order_owner.get(order_id)
+                    if owner is None:
+                        print(f"Skipping refund {order_id} ({tenant_name}): order not seeded for {email}")
+                        continue
+                    if owner != cust_id:
+                        print(f"Skipping refund {order_id} ({tenant_name}): order belongs to another customer than {email}")
+                        continue
+
                     existing = db.query(RefundHistory).filter_by(
                         tenant_id=tenant.id,
-                        order_id=ref["order_id"],
+                        order_id=order_id,
                     ).first()
                     if existing:
                         continue
 
-                    cust = db.query(Customer).filter_by(
-                        tenant_id=tenant.id, email=email,
-                    ).first()
-
                     refund = RefundHistory(
                         tenant_id=tenant.id,
-                        customer_id=cust.customer_id if cust else None,
+                        customer_id=cust_id,
                         customer_email=email,
-                        order_id=ref["order_id"],
+                        order_id=order_id,
                         amount=ref["amount"],
                         refund_date=date.fromisoformat(ref["date"]),
                     )

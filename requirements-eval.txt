@@ -1,0 +1,9 @@
+
+ragas==0.4.3
+instructor[google-genai]>=1.12,<2
+datasets
+langchain-google-genai
+langchain-community
+vertexai
+litellm==1.70.4
+openai>=3.0

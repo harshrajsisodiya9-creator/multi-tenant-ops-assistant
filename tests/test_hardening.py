@@ -24,7 +24,7 @@ from app.graph.agent_prod.react_agent import (
     run_react_agent,
 )
 from app.graph.agent_prod.tool_context import ToolContext
-from app.models import Customer, Order, OrderItem, RefundHistory, Tenant
+from app.models import Customer, OperationLog, Order, OrderItem, RefundHistory, Tenant
 
 TENANT_ID = str(uuid4())
 CUSTOMER_A = "CUST-H-001"
@@ -41,6 +41,7 @@ def prod_db():
     tables = [
         Tenant.__table__, Customer.__table__, Order.__table__,
         OrderItem.__table__, RefundHistory.__table__,
+        OperationLog.__table__,
     ]
     Base.metadata.create_all(engine, tables=tables)
     DBSession = sessionmaker(bind=engine)
@@ -127,7 +128,9 @@ class TestAllowlist:
 # ── 3. Double refund ─────────────────────────────────────────────────
 
 class TestDoubleRefund:
-    def test_second_refund_same_order_rejected(self, prod_db):
+    def test_second_refund_same_order_idempotent(self, prod_db):
+        """Idempotent replay: same caller, same args → return cached success."""
+        from sqlalchemy import select
         from app.graph.agent_prod.tools.order_tools import initiate_refund
 
         ctx = ToolContext(tenant_id=TENANT_ID, customer_id=CUSTOMER_A)
@@ -137,8 +140,15 @@ class TestDoubleRefund:
 
         with patch("app.graph.agent_prod.tools.order_tools._get_db", return_value=prod_db()):
             second = initiate_refund(ctx, "ORD-H-001", 2000)
-        assert second["success"] is False
-        assert "already exists" in second["error"].lower()
+        assert second["success"] is True
+        assert second["amount"] == first["amount"]
+
+        db = prod_db()
+        count = db.execute(
+            select(RefundHistory).where(RefundHistory.order_id == "ORD-H-001")
+        ).scalars().all()
+        db.close()
+        assert len(count) == 1, "Exactly one RefundHistory row despite two calls"
 
 
 # ── 4. Cancel shipped ───────────────────────────────────────────────

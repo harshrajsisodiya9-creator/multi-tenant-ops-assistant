@@ -65,6 +65,29 @@ def conditional_executor_node(state: AgentState) -> dict:
     entities = result.get("entities", {})
     constraints = result.get("constraints", {})
 
+    try:
+        return _execute_conditional(
+            result, intent, conditional, request_type, condition,
+            tenant_id, customer_id, entities, constraints,
+        )
+    except Exception:
+        logger.exception("Conditional executor failed for intent '%s'", intent)
+        result["domain_result"] = "An unexpected error occurred while processing your request. Please try again."
+        result["status"] = "failed"
+        return {"processed_results": [result]}
+
+
+def _execute_conditional(
+    result: dict,
+    intent: str,
+    conditional: dict,
+    request_type: str,
+    condition: dict,
+    tenant_id: str,
+    customer_id: str,
+    entities: dict,
+    constraints: dict,
+) -> dict:
     # ── Step 1: Gather evidence ──────────────────────────────────────
     evidence, tool_calls = _gather_evidence(condition, tenant_id, customer_id, entities)
     result["tool_calls"] = tool_calls
@@ -126,7 +149,11 @@ def conditional_executor_node(state: AgentState) -> dict:
         result["status"] = "blocked"
         return {"processed_results": [result]}
 
-    workflow_result = workflow(tenant_id, customer_id, entities, constraints)
+    pre_condition = {"condition": condition, "evaluation": eval_result}
+    workflow_result = workflow(
+        tenant_id, customer_id, entities, constraints,
+        pre_condition=pre_condition,
+    )
 
     result["tool_calls"] = tool_calls + workflow_result.get("tool_calls", [])
     result["domain_result"] = workflow_result["domain_result"]

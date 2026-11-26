@@ -71,6 +71,8 @@ def _run_react_agent(
     entities: dict,
     constraints: dict,
     user_message: str,
+    *,
+    conversation_history: list[dict] | None = None,
 ) -> dict:
     run_react_agent = get_react_agent()
     order_id = entities.get("order_id", "")
@@ -85,6 +87,7 @@ def _run_react_agent(
             user_message=user_message,
             intent=intent,
             constraints=constraints,
+            conversation_history=conversation_history,
         )
     else:
         agent_result = run_react_agent(
@@ -195,6 +198,7 @@ def lookup_agent_node(state: AgentState) -> dict:
     agent_out = _run_react_agent(
         tenant_id, customer_id, result["intent"],
         entities, constraints, user_message,
+        conversation_history=state.get("conversation_history"),
     )
     result["tool_calls"] = agent_out.get("tool_calls", [])
 

@@ -6,7 +6,7 @@ from sqlalchemy.engine import create_engine
 from alembic import context
 from app.config import setting
 from app.database import Base
-from app.models import Chunk, Tenant
+from app.models import Chunk, Customer, OperationLog, Order, OrderItem, RefundHistory, Tenant
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

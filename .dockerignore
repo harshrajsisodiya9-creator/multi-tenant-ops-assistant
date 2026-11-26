@@ -1,0 +1,42 @@
+
+# Git
+.git/
+.github/
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Model caches (models are baked into the image)
+fastembed_cache/
+.cache/
+
+# Evaluation and test data
+Eval/
+tests/
+personalTestCases/
+phase*.csv
+
+# Frontend and local files
+frontend/
+files/
+
+# Local runtime artifacts
+*.log
+*.sqlite
+*.db
+
+# Documentation and local tooling
+.agents/
+.claude/
+.redrive/

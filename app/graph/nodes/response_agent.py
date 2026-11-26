@@ -15,12 +15,13 @@ You receive structured intent results and compose ONE natural, helpful response.
 
 Each intent result has:
 - intent: what the customer wanted (faq, order_status, refund, cancel_order, complaint)
-- status: fulfilled, blocked, needs_clarification, or awaiting_human
+- status: fulfilled, blocked, failed, needs_clarification, or awaiting_human
 - domain_result: the specific information or explanation for this intent
 
 Rules:
 - For fulfilled intents: present the information naturally
 - For blocked intents: explain WHY it was blocked using the domain_result, be empathetic
+- For failed intents: apologise, explain what went wrong using the domain_result, and suggest trying again or contacting support
 - For needs_clarification: ask for the specific missing information
 - For awaiting_human: acknowledge the request and tell the customer a team member will follow up
 - If multiple intents: weave them into one coherent response, don't use bullet points or numbering
@@ -41,6 +42,36 @@ Rules:
 - Present the resolution naturally and concisely
 - Be professional and empathetic
 - Do NOT mention internal codes or system details"""
+
+
+def _format_turn_summaries(turn_summaries: list[dict]) -> str:
+    if not turn_summaries:
+        return ""
+    lines = []
+    for s in turn_summaries:
+        oid = s.get("order_id", "")
+        part = f"{s['intent']}"
+        if oid:
+            part += f" for {oid}"
+        part += f" ({s['status']}"
+        reason = s.get("reason_code")
+        if reason:
+            part += f" — {reason}"
+        part += ")"
+        lines.append(f"- {part}")
+    return "Previously resolved (DO NOT repeat):\n" + "\n".join(lines)
+
+
+def _build_turn_summary(intent_results: list[dict]) -> list[dict]:
+    summaries = []
+    for r in intent_results:
+        summaries.append({
+            "intent": r.get("intent", "unknown"),
+            "order_id": r.get("entities", {}).get("order_id", ""),
+            "status": r.get("status", "unknown"),
+            "reason_code": r.get("reason_code", ""),
+        })
+    return summaries
 
 
 def response_agent_node(state: AgentState) -> dict:
@@ -75,10 +106,11 @@ def response_agent_node(state: AgentState) -> dict:
     )
 
     user_message = state.get("user_message", "")
+    prior_context = _format_turn_summaries(state.get("turn_summaries") or [])
 
-    user_content = (
-        f"Customer message: {user_message}\n\nIntent results:\n{results_summary}"
-    )
+    user_content = f"Customer message: {user_message}\n\nIntent results:\n{results_summary}"
+    if prior_context:
+        user_content = f"{prior_context}\n\n{user_content}"
 
     llm = ChatGroq(
         model=setting.groq_model,
@@ -102,6 +134,12 @@ def response_agent_node(state: AgentState) -> dict:
             customer_id,
             conversation_id,
             response.content,
+        )
+        conversation_store.add_turn_summary(
+            tenant_id,
+            customer_id,
+            conversation_id,
+            _build_turn_summary(results_for_llm),
         )
 
     return {"response": response.content}

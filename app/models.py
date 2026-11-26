@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     Computed,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import UserDefinedType
@@ -52,6 +54,8 @@ class Chunk(Base):
             "chunk_index",
             name="uq_chunks_tenant_document_chunk",
         ),
+        # Full-text search index created by migration a7f2e3c41b90.
+        Index("ix_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -131,6 +135,9 @@ class OrderItem(Base):
 
 class RefundHistory(Base):
     __tablename__ = "refund_history"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "order_id", name="uq_refund_history_tenant_order"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
@@ -141,3 +148,31 @@ class RefundHistory(Base):
     refund_date: Mapped[date] = mapped_column(Date)
 
     tenant: Mapped[Tenant] = relationship(back_populates="refund_history")
+
+
+class OperationLog(Base):
+    __tablename__ = "operation_log"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "customer_id", "idempotency_key",
+            name="uq_operation_log_idempotency",
+        ),
+        Index("ix_operation_log_tenant_customer", "tenant_id", "customer_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    customer_id: Mapped[str] = mapped_column(String, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    # Python default for ORM inserts; server_default mirrors migration d4e8f1a2b3c5.
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="pending", server_default="pending",
+    )
+    request_args: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default="{}",
+    )
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(),
+    )

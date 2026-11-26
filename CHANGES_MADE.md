@@ -262,3 +262,58 @@ All test files migrated from `customer_email` to `customer_id` state keys.
 - **app/graph/builder.py** — Minor wiring updates for subgraph
 - **.env.example** *(new)* — Example environment variables
 - **frontend/** *(new)* — Frontend directory
+
+---
+
+## HITL Lifecycle, Thread Ownership and Concurrency
+
+Branch: `change` | Base commit: `7968fde` | Date: 2026-11-26
+
+### Problem
+- A reviewer decision with index `-1`, `True` or `False` passed validation (Python allows negative indexes, and `bool` is an `int`), so a malformed decision could approve the wrong pending operation.
+- `processed_results` used `operator.add` and was never cleared. A second message on the same `thread_id` merged the previous turn's results, so old answers repeated and an already-approved escalation could interrupt again and refund a second time.
+- A new `/agent` message on a thread paused for approval started a fresh turn and silently abandoned the pending approval.
+- An unknown client-supplied `thread_id` was claimed by whoever sent it first. Error messages ("belongs to a different customer/tenant") revealed that a foreign thread existed.
+- Nothing serialized requests on the same thread: the pending-approval check and the graph invocation could race.
+- `/agent/resume` on an idle or completed thread ran no nodes but returned the last turn's `intent_results` as if the decision had been applied.
+
+### Files changed
+- **app/graph/nodes/escalation_handler.py**: the decision index must be a real non-negative `int` in range. Booleans, floats, strings, `None` and negatives are skipped and never execute a tool.
+- **app/graph/state.py**: `processed_results` uses `reduce_processed_results`. A `None` update clears the list, and list updates append, so parallel `Send()` branches still merge.
+- **app/graph/nodes/before_router.py**: at the start of every new turn, resets `processed_results` (to `None`), `intent_results`, `router_output`, `policy_decision`, `has_tool_calls`, `response_phase`, `pre_check_bail` and `response`. Conversation memory (history, customer/orders context, turn summaries) and request identity are untouched. `/agent/resume` resumes inside `escalation_handler` and never runs this node.
+- **app/main.py**:
+  - **Server-issued thread IDs:** `_create_thread` generates a `uuid4().hex` and registers its owner atomically (`_register_thread` under `_THREAD_OWNERS_GUARD`). A client-supplied `thread_id` must already be registered to the caller's `(tenant_id, customer_id)`. Unknown and foreign threads both get the same `403 THREAD_NOT_ACCESSIBLE` response.
+  - **Per-thread lock:** `_thread_lock(thread_id)` keeps a refcounted registry of `threading.Lock` objects (`_THREAD_LOCKS`, guarded by `_THREAD_LOCKS_GUARD`), one lock per thread ID. An entry is removed only when its last holder or waiter leaves. Endpoints are sync and run in FastAPI's thread pool, so threading locks are the right primitive. Different threads never share a lock.
+  - **`/agent`:** holds the thread lock across ownership validation, the pending-interrupt check (`409 THREAD_AWAITING_APPROVAL`) and the whole `invoke`.
+  - **`/agent/resume`:** holds the same lock across ownership validation (reviewer tenant must match), the pending-approval check and the `Command(resume=...)` invoke. The thread must be paused at `escalation_handler` (`APPROVAL_NODE`), checked via `get_state().tasks[*].interrupts`. Otherwise it returns `409 THREAD_NOT_AWAITING_APPROVAL` without invoking the graph.
+
+### API behavior changes
+| Request | Before | After |
+|---|---|---|
+| `/agent` with unknown `thread_id` | 200, thread claimed by caller | 403 `THREAD_NOT_ACCESSIBLE`, graph not invoked |
+| `/agent` on another customer's thread | 403 "Thread belongs to a different customer" | 403 `THREAD_NOT_ACCESSIBLE` (same as unknown) |
+| `/agent` on a thread paused for approval | 200, approval abandoned | 409 `THREAD_AWAITING_APPROVAL`, no state or memory change |
+| `/agent/resume` unknown thread | 404 "Thread not found" | 403 `THREAD_NOT_ACCESSIBLE` |
+| `/agent/resume` other tenant's thread | 403 "Thread belongs to a different tenant" | 403 `THREAD_NOT_ACCESSIBLE` (same as unknown) |
+| `/agent/resume` idle/completed thread | 200 with stale `intent_results` | 409 `THREAD_NOT_AWAITING_APPROVAL`, graph not invoked |
+
+### Fixes applied
+- **tests/test_jwt_auth.py**:
+  - `test_reviewer_token_on_resume_succeeds`: the mocked graph now reports a pending `escalation_handler` interrupt, because resume requires one.
+  - `test_reuse_another_customers_thread` and `test_resume_cross_tenant_thread`: still assert 403, but check `THREAD_NOT_ACCESSIBLE` instead of the old messages that revealed the thread's existence.
+
+### Tests (personalTestCases/)
+- **test_escalation_handler.py**: negative, float, string and boolean (`True`/`False`) index regressions.
+- **test_state_reducer.py**: reducer clear/append semantics and `AgentState` wiring.
+- **test_before_router.py**: which per-turn fields reset and which memory is kept.
+- **test_graph_integration.py**: real `build_graph()` with `Send()` fan-out, reducer merging, `interrupt()` and `Command(resume=...)`, and no leakage between turns.
+- **test_api_turn_lifecycle.py**: `/agent` turn reset, 409 on paused threads with no side effects, resume without reset, acceptance after approval/denial, and unauthorized access.
+- **test_thread_ownership_concurrency.py**:
+  - Ownership: unknown IDs, server-issued IDs, owner reuse, other customer/tenant, concurrent registration.
+  - Concurrency, using Events and an instrumented lock, no sleeps: same-thread serialization, independent threads, 409 when the first request creates the interrupt, `/agent` and resume never interleaving, lock-registry handoff and cleanup.
+  - Resume safety.
+
+### Known limitations
+- **In-process coordination only:** the per-thread locks, `_THREAD_OWNERS` and `MemorySaver` all live in one process. Separate workers or processes are not coordinated, so the same thread can still race across workers, and a restart loses ownership records and paused approvals. A shared checkpointer, ownership store and distributed lock would be needed.
+- **No approval timeout:** a paused thread blocks its customer until a reviewer acts.
+- **Lock held across the full invocation:** a slow LLM call delays later requests on the same thread. Other threads are unaffected.

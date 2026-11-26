@@ -1,19 +1,101 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.graph.agent_prod.tool_context import ToolContext
 from app.graph.policy_loader import resolve_policy
-from app.models import Order, OrderItem, RefundHistory
+from app.models import OperationLog, Order, OrderItem, RefundHistory
+
+logger = logging.getLogger(__name__)
 
 
 def _get_db() -> Session:
     return SessionLocal()
+
+
+# ---------------------------------------------------------------------------
+# Idempotency helpers
+# ---------------------------------------------------------------------------
+
+def _make_idempotency_key(operation: str, **kwargs) -> str:
+    parts = [operation]
+    for k in sorted(kwargs):
+        parts.append(f"{k}={kwargs[k]}")
+    return hashlib.sha256(":".join(parts).encode()).hexdigest()[:32]
+
+
+def _claim_idempotency(
+    db: Session,
+    tenant_id: str,
+    customer_id: str,
+    idempotency_key: str,
+    operation: str,
+    request_args: dict,
+) -> OperationLog | None:
+    """Try to claim an idempotency slot.
+
+    Returns the existing OperationLog if the key is already taken (completed
+    or pending), None if the slot was successfully claimed for this caller.
+    """
+    existing = db.execute(
+        select(OperationLog).where(
+            OperationLog.tenant_id == UUID(tenant_id),
+            OperationLog.customer_id == customer_id,
+            OperationLog.idempotency_key == idempotency_key,
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+
+    log = OperationLog(
+        tenant_id=UUID(tenant_id),
+        customer_id=customer_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        status="pending",
+        request_args=json.dumps(request_args, default=str),
+    )
+    db.add(log)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return db.execute(
+            select(OperationLog).where(
+                OperationLog.tenant_id == UUID(tenant_id),
+                OperationLog.customer_id == customer_id,
+                OperationLog.idempotency_key == idempotency_key,
+            )
+        ).scalar_one_or_none()
+    return None
+
+
+def _complete_idempotency(
+    db: Session, log: OperationLog, status: str, result: dict,
+) -> None:
+    log.status = status
+    log.result = json.dumps(result, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Customer-level advisory lock (PostgreSQL only)
+# ---------------------------------------------------------------------------
+
+def _customer_advisory_lock(db: Session, tenant_id: str, customer_id: str) -> None:
+    if db.bind.dialect.name == "sqlite":
+        return
+    h = hashlib.sha256(f"{tenant_id}:{customer_id}".encode()).digest()
+    lock_id = int.from_bytes(h[:8], byteorder="big", signed=True)
+    db.execute(text("SELECT pg_advisory_xact_lock(:lid)"), {"lid": lock_id})
 
 
 def _find_order(
@@ -126,14 +208,45 @@ def initiate_return(
 ) -> dict:
     db = _get_db()
     try:
+        idem_key = _make_idempotency_key(
+            "initiate_return", order_id=order_id,
+            item_id=item_id or "", tenant_id=ctx.tenant_id,
+        )
+        request_args = {"order_id": order_id, "item_id": item_id, "reason": reason}
+
+        _customer_advisory_lock(db, ctx.tenant_id, ctx.customer_id)
+
+        existing_op = _claim_idempotency(
+            db, ctx.tenant_id, ctx.customer_id, idem_key,
+            "initiate_return", request_args,
+        )
+        if existing_op:
+            if existing_op.status == "completed":
+                return json.loads(existing_op.result)
+            return {"success": False, "error": f"Return already processed for order {order_id}."}
+
+        op_log = db.execute(
+            select(OperationLog).where(
+                OperationLog.tenant_id == UUID(ctx.tenant_id),
+                OperationLog.customer_id == ctx.customer_id,
+                OperationLog.idempotency_key == idem_key,
+            )
+        ).scalar_one()
+
         order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
-            return {"success": False, "error": f"Order {order_id} not found."}
+            result = {"success": False, "error": f"Order {order_id} not found."}
+            _complete_idempotency(db, op_log, "failed", result)
+            db.commit()
+            return result
 
         if item_id:
             item = _find_item(db, ctx, order_id, item_id)
             if not item:
-                return {"success": False, "error": f"Item {item_id} not found."}
+                result = {"success": False, "error": f"Item {item_id} not found."}
+                _complete_idempotency(db, op_log, "failed", result)
+                db.commit()
+                return result
             product = item.product
             item_category = item.category
         else:
@@ -142,14 +255,19 @@ def initiate_return(
 
         policy_block = _check_return_policy(ctx.tenant_id, order, item_category)
         if policy_block:
+            _complete_idempotency(db, op_log, "failed", policy_block)
+            db.commit()
             return policy_block
 
-        return {
+        result = {
             "success": True,
             "return_id": f"RET-{order_id}-001",
             "product": product,
             "message": f"Return initiated for {product} from order {order_id}.",
         }
+        _complete_idempotency(db, op_log, "completed", result)
+        db.commit()
+        return result
     finally:
         db.close()
 
@@ -182,23 +300,59 @@ def initiate_refund(
 ) -> dict:
     db = _get_db()
     try:
+        idem_key = _make_idempotency_key(
+            "initiate_refund", order_id=order_id, tenant_id=ctx.tenant_id,
+        )
+        request_args = {
+            "order_id": order_id, "amount": amount,
+            "refund_type": refund_type, "item_id": item_id,
+        }
+
+        _customer_advisory_lock(db, ctx.tenant_id, ctx.customer_id)
+
+        existing_op = _claim_idempotency(
+            db, ctx.tenant_id, ctx.customer_id, idem_key,
+            "initiate_refund", request_args,
+        )
+        if existing_op:
+            if existing_op.status == "completed":
+                return json.loads(existing_op.result)
+            return {"success": False, "error": f"Refund already exists for order {order_id}."}
+
+        op_log = db.execute(
+            select(OperationLog).where(
+                OperationLog.tenant_id == UUID(ctx.tenant_id),
+                OperationLog.customer_id == ctx.customer_id,
+                OperationLog.idempotency_key == idem_key,
+            )
+        ).scalar_one()
+
         order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
-            return {"success": False, "error": f"Order {order_id} not found."}
+            result = {"success": False, "error": f"Order {order_id} not found."}
+            _complete_idempotency(db, op_log, "failed", result)
+            db.commit()
+            return result
 
-        existing = db.execute(
+        existing_refund = db.execute(
             select(RefundHistory).where(
                 RefundHistory.tenant_id == UUID(ctx.tenant_id),
                 RefundHistory.order_id == order_id,
             )
         ).scalar_one_or_none()
-        if existing:
-            return {"success": False, "error": f"Refund already exists for order {order_id}."}
+        if existing_refund:
+            result = {"success": False, "error": f"Refund already exists for order {order_id}."}
+            _complete_idempotency(db, op_log, "failed", result)
+            db.commit()
+            return result
 
         if item_id:
             item = _find_item(db, ctx, order_id, item_id)
             if not item:
-                return {"success": False, "error": f"Item {item_id} not found."}
+                result = {"success": False, "error": f"Item {item_id} not found."}
+                _complete_idempotency(db, op_log, "failed", result)
+                db.commit()
+                return result
             product = item.product
             item_category = item.category
         else:
@@ -207,6 +361,8 @@ def initiate_refund(
 
         policy_block = _check_return_policy(ctx.tenant_id, order, item_category)
         if policy_block:
+            _complete_idempotency(db, op_log, "failed", policy_block)
+            db.commit()
             return policy_block
 
         refund = RefundHistory(
@@ -218,9 +374,13 @@ def initiate_refund(
             refund_date=date.today(),
         )
         db.add(refund)
-        db.commit()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            return {"success": False, "error": f"Refund already exists for order {order_id}."}
 
-        return {
+        result = {
             "success": True,
             "refund_id": f"REF-{order_id}-001",
             "amount": amount,
@@ -228,6 +388,9 @@ def initiate_refund(
             "product": product,
             "message": f"Refund of ₹{amount:,.0f} initiated for {product} ({order_id}) via {refund_type}.",
         }
+        _complete_idempotency(db, op_log, "completed", result)
+        db.commit()
+        return result
     finally:
         db.close()
 
@@ -256,26 +419,58 @@ def get_shipping_label(ctx: ToolContext, order_id: str) -> dict:
 def cancel_order(ctx: ToolContext, order_id: str) -> dict:
     db = _get_db()
     try:
+        idem_key = _make_idempotency_key(
+            "cancel_order", order_id=order_id, tenant_id=ctx.tenant_id,
+        )
+        request_args = {"order_id": order_id}
+
+        _customer_advisory_lock(db, ctx.tenant_id, ctx.customer_id)
+
+        existing_op = _claim_idempotency(
+            db, ctx.tenant_id, ctx.customer_id, idem_key,
+            "cancel_order", request_args,
+        )
+        if existing_op:
+            if existing_op.status == "completed":
+                return json.loads(existing_op.result)
+            return {"success": False, "error": f"Cancellation already processed for order {order_id}."}
+
+        op_log = db.execute(
+            select(OperationLog).where(
+                OperationLog.tenant_id == UUID(ctx.tenant_id),
+                OperationLog.customer_id == ctx.customer_id,
+                OperationLog.idempotency_key == idem_key,
+            )
+        ).scalar_one()
+
         order = _find_order(db, ctx, order_id, for_update=True)
         if not order:
-            return {"success": False, "error": f"Order {order_id} not found."}
+            result = {"success": False, "error": f"Order {order_id} not found."}
+            _complete_idempotency(db, op_log, "failed", result)
+            db.commit()
+            return result
 
         cancellable = {"pending", "processing", "confirmed"}
         if order.status.lower() not in cancellable:
-            return {
+            result = {
                 "success": False,
                 "error": f"Order {order_id} cannot be cancelled (status: {order.status}).",
             }
+            _complete_idempotency(db, op_log, "failed", result)
+            db.commit()
+            return result
 
         order.status = "cancelled"
-        db.commit()
 
-        return {
+        result = {
             "success": True,
             "order_id": order_id,
             "product": order.product,
             "message": f"Order {order_id} ({order.product}) has been cancelled.",
         }
+        _complete_idempotency(db, op_log, "completed", result)
+        db.commit()
+        return result
     finally:
         db.close()
 

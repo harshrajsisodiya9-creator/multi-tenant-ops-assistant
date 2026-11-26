@@ -45,6 +45,7 @@ def route_intents(state: AgentState) -> list[Send]:
         "customer_id": state.get("customer_id"),
         "user_message": state["user_message"],  # type: ignore
         "conversation_id": state.get("conversation_id", ""),
+        "conversation_history": state.get("conversation_history", []),
         "customer_context": state.get("customer_context", {}),
         "orders_context": state.get("orders_context", []),
     }
@@ -86,10 +87,19 @@ def after_response_agent(state: AgentState) -> Literal["complete", "needs_escala
     return "complete"
 
 
-def after_escalation(state: AgentState) -> Literal["follow_up", "end"]:
-    if state.get("response_phase") == "follow_up":
-        return "follow_up"
-    return "end"
+def after_escalation(
+    state: AgentState,
+) -> Literal["hitl_action_check", "follow_up", "end"]:
+    if state.get("response_phase") != "follow_up":
+        return "end"
+    results = state.get("intent_results") or []
+    has_hitl_writes = any(
+        r.get("_newly_resolved") and r.get("tool_calls")
+        for r in results
+    )
+    if has_hitl_writes:
+        return "hitl_action_check"
+    return "follow_up"
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +125,7 @@ def build_graph() -> StateGraph:
     graph.add_node("action_check", action_check_node)
     graph.add_node("response_agent", response_agent_node)
     graph.add_node("escalation_handler", escalation_handler_node)
+    graph.add_node("hitl_action_check", action_check_node)
     graph.add_node("follow_up_response", response_agent_node)
 
     # --- edges ---
@@ -166,15 +177,17 @@ def build_graph() -> StateGraph:
         },
     )
 
-    # 5) after escalation: follow-up response or end?
+    # 5) after escalation: verify writes, then follow-up response, or end?
     graph.add_conditional_edges(
         "escalation_handler",
         after_escalation,
         {
+            "hitl_action_check": "hitl_action_check",
             "follow_up": "follow_up_response",
             "end": END,
         },
     )
+    graph.add_edge("hitl_action_check", "follow_up_response")
     graph.add_edge("follow_up_response", END)
 
     checkpointer = MemorySaver()

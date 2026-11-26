@@ -4,6 +4,10 @@ import threading
 from copy import deepcopy
 
 MAX_HISTORY = 10
+MAX_TURN_SUMMARIES = 20
+
+def _new_entry() -> dict:
+    return {"messages": [], "customer_context": {}, "orders_context": [], "turn_summaries": []}
 
 
 class ConversationStore:
@@ -19,13 +23,13 @@ class ConversationStore:
         with self._lock:
             entry = self._store.get(key)
             if entry is None:
-                return {"messages": [], "customer_context": {}, "orders_context": []}
+                return _new_entry()
             return deepcopy(entry)
 
     def add_human_message(self, tenant_id: str, customer_id: str, conversation_id: str, content: str) -> None:
         key = self._key(tenant_id, customer_id, conversation_id)
         with self._lock:
-            entry = self._store.setdefault(key, {"messages": [], "customer_context": {}, "orders_context": []})
+            entry = self._store.setdefault(key, _new_entry())
             if entry["messages"] and entry["messages"][-1].get("role") == "human" and entry["messages"][-1].get("content") == content:
                 return
             entry["messages"].append({"role": "human", "content": content})
@@ -34,20 +38,20 @@ class ConversationStore:
     def add_ai_response(self, tenant_id: str, customer_id: str, conversation_id: str, content: str) -> None:
         key = self._key(tenant_id, customer_id, conversation_id)
         with self._lock:
-            entry = self._store.setdefault(key, {"messages": [], "customer_context": {}, "orders_context": []})
+            entry = self._store.setdefault(key, _new_entry())
             entry["messages"].append({"role": "assistant", "content": content})
             self._trim(entry)
 
     def update_customer_context(self, tenant_id: str, customer_id: str, conversation_id: str, context: dict) -> None:
         key = self._key(tenant_id, customer_id, conversation_id)
         with self._lock:
-            entry = self._store.setdefault(key, {"messages": [], "customer_context": {}, "orders_context": []})
+            entry = self._store.setdefault(key, _new_entry())
             entry["customer_context"].update(context)
 
     def update_orders_context(self, tenant_id: str, customer_id: str, conversation_id: str, orders: list[dict]) -> None:
         key = self._key(tenant_id, customer_id, conversation_id)
         with self._lock:
-            entry = self._store.setdefault(key, {"messages": [], "customer_context": {}, "orders_context": []})
+            entry = self._store.setdefault(key, _new_entry())
             existing_ids = {o["order_id"] for o in entry["orders_context"]}
             for order in orders:
                 oid = order.get("order_id")
@@ -61,6 +65,16 @@ class ConversationStore:
                 else:
                     entry["orders_context"].append(order)
                     existing_ids.add(oid)
+
+    def add_turn_summary(
+        self, tenant_id: str, customer_id: str, conversation_id: str, summaries: list[dict],
+    ) -> None:
+        key = self._key(tenant_id, customer_id, conversation_id)
+        with self._lock:
+            entry = self._store.setdefault(key, _new_entry())
+            entry.setdefault("turn_summaries", []).extend(summaries)
+            if len(entry["turn_summaries"]) > MAX_TURN_SUMMARIES:
+                entry["turn_summaries"] = entry["turn_summaries"][-MAX_TURN_SUMMARIES:]
 
     def _trim(self, entry: dict) -> None:
         if len(entry["messages"]) > MAX_HISTORY:

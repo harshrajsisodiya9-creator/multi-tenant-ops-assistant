@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # Pinned by digest. Debian 13 (glibc 2.41) matches the collation version the
+    # existing postgres_data volume was created with; the floating pg16 tag moved to
+    # Debian 12 (glibc 2.36). Read docs/DATABASE_OPERATIONS.md before changing this.
+    image: pgvector/pgvector:0.8.7-pg16-trixie@sha256:c28c0b700f3f1b5eec14082b31ad6e7c8a566d14386323609c615315e7c0ffc8
     container_name: multi_tenant_postgres
     environment:
       POSTGRES_USER: postgres

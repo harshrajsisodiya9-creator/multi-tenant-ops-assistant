@@ -19,4 +19,14 @@ def before_router_node(state: AgentState) -> dict:
         "conversation_history": snapshot["messages"],
         "customer_context": snapshot["customer_context"],
         "orders_context": snapshot["orders_context"],
+        "turn_summaries": snapshot.get("turn_summaries", []),
+        # Clear the previous turn's execution state. HITL resumes via Command skip this node.
+        "processed_results": None,
+        "intent_results": [],
+        "router_output": None,
+        "policy_decision": None,
+        "has_tool_calls": False,
+        "response_phase": "complete",
+        "pre_check_bail": False,
+        "response": "",
     }

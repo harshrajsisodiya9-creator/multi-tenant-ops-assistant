@@ -334,7 +334,7 @@ class TestOwnerScopedQueries:
         from sqlalchemy.pool import StaticPool
 
         from app.database import Base
-        from app.models import Customer, Order, OrderItem, RefundHistory, Tenant
+        from app.models import Customer, OperationLog, Order, OrderItem, RefundHistory, Tenant
 
         engine = create_engine(
             "sqlite://",
@@ -344,6 +344,7 @@ class TestOwnerScopedQueries:
         tables = [
             Tenant.__table__, Customer.__table__, Order.__table__,
             OrderItem.__table__, RefundHistory.__table__,
+            OperationLog.__table__,
         ]
         Base.metadata.create_all(engine, tables=tables)
         TestSession = sessionmaker(bind=engine)
@@ -444,6 +445,10 @@ class TestResumeRequiresReviewer:
             "response": "Approved.",
             "intent_results": [],
         }
+        # Resume is only accepted while the thread is paused at the approval node.
+        pending_task = MagicMock(interrupts=(MagicMock(),))
+        pending_task.name = "escalation_handler"
+        mock_graph.get_state.return_value.tasks = (pending_task,)
 
         token = _mint(TENANT_A_ID, "REVIEWER-001", SECRET_A, role="reviewer")
         resp = c.post(
@@ -472,7 +477,8 @@ class TestThreadOwnership:
             headers=_headers(API_KEY_A, token_b),
         )
         assert resp.status_code == 403
-        assert "different customer" in resp.json()["detail"].lower()
+        # Same body as an unknown thread, so a foreign thread's existence is not revealed.
+        assert resp.json()["detail"]["code"] == "THREAD_NOT_ACCESSIBLE"
 
     def test_own_thread_reuse_succeeds(self, client):
         c, _ = client
@@ -506,7 +512,8 @@ class TestThreadOwnership:
             headers=_headers(API_KEY_B, token_b_reviewer),
         )
         assert resp.status_code == 403
-        assert "different tenant" in resp.json()["detail"].lower()
+        # Same body as an unknown thread, so a foreign thread's existence is not revealed.
+        assert resp.json()["detail"]["code"] == "THREAD_NOT_ACCESSIBLE"
 
 
 class TestDevTokenEndpoint:
@@ -567,7 +574,7 @@ class TestProdEntityResolution:
         from sqlalchemy.pool import StaticPool
 
         from app.database import Base
-        from app.models import Customer, Order, OrderItem, RefundHistory, Tenant
+        from app.models import Customer, OperationLog, Order, OrderItem, RefundHistory, Tenant
 
         engine = create_engine(
             "sqlite://",
@@ -577,6 +584,7 @@ class TestProdEntityResolution:
         tables = [
             Tenant.__table__, Customer.__table__, Order.__table__,
             OrderItem.__table__, RefundHistory.__table__,
+            OperationLog.__table__,
         ]
         Base.metadata.create_all(engine, tables=tables)
         ProdSession = sessionmaker(bind=engine)

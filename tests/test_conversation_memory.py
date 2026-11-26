@@ -24,7 +24,7 @@ class TestConversationStore:
 
     def test_empty_snapshot(self):
         snap = self.store.get_snapshot(T, C, CONV)
-        assert snap == {"messages": [], "customer_context": {}, "orders_context": []}
+        assert snap == {"messages": [], "customer_context": {}, "orders_context": [], "turn_summaries": []}
 
     def test_add_human_message(self):
         self.store.add_human_message(T, C, CONV, "hello")
@@ -479,7 +479,7 @@ class TestFanOutContext:
         assert len(sends) == 1
         payload = sends[0].arg
         assert payload["conversation_id"] == CONV
-        assert "conversation_history" not in payload
+        assert payload["conversation_history"] == [{"role": "human", "content": "prior"}]
         assert payload["orders_context"] == [{"order_id": "ORD-1"}]
 
 

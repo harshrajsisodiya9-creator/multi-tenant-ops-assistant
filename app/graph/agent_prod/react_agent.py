@@ -15,10 +15,14 @@ from app.graph.agent_prod.tool_context import ToolContext
 
 INTENT_TOOLS: dict[str, list[str]] = {
     "refund": [
-        "get_order_details", "get_return_eligibility", "list_my_orders",
+        "get_order_details",
+        "get_return_eligibility",
+        "list_my_orders",
     ],
     "cancel_order": [
-        "get_order_details", "get_order_tracking", "list_my_orders",
+        "get_order_details",
+        "get_order_tracking",
+        "list_my_orders",
     ],
 }
 
@@ -40,6 +44,16 @@ Constraints for this request:
 _subgraph = build_react_subgraph()
 
 
+def _format_history_context(conversation_history: list[dict] | None) -> str:
+    if not conversation_history:
+        return ""
+    lines = []
+    for m in conversation_history:
+        role = "Customer" if m["role"] == "human" else "Assistant"
+        lines.append(f"{role}: {m['content']}")
+    return "Previous conversation:\n" + "\n".join(lines)
+
+
 def run_react_agent(
     ctx: ToolContext,
     order_id: str,
@@ -47,6 +61,7 @@ def run_react_agent(
     intent: str,
     constraints: dict | None = None,
     *,
+    conversation_history: list[dict] | None = None,
     llm=None,
 ) -> dict:
     constraints = constraints or {}
@@ -63,16 +78,19 @@ def run_react_agent(
         constraints=json.dumps(constraints) if constraints else "None",
     )
 
+    messages = [SystemMessage(content=system_prompt)]
+    history_ctx = _format_history_context(conversation_history)
+    if history_ctx:
+        messages.append(SystemMessage(content=history_ctx))
+    messages.append(HumanMessage(content=f"Order: {order_id}\nRequest: {user_message}"))
+
     config: RunnableConfig = {}
     if llm is not None:
         config = {"configurable": {"llm": llm}}
 
     result = _subgraph.invoke(
         {
-            "messages": [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=f"Order: {order_id}\nRequest: {user_message}"),
-            ],
+            "messages": messages,
             "tool_call_log": [],
             "iteration": 0,
             "final_result": "",
@@ -81,12 +99,13 @@ def run_react_agent(
             "constraints": constraints,
             "tenant_id": ctx.tenant_id,
             "customer_id": ctx.customer_id,
-        },
+        },  # type: ignore
         config=config,
     )
 
     return {
-        "result": result.get("final_result") or "Agent reached maximum iterations without a final answer.",
+        "result": result.get("final_result")
+        or "Agent reached maximum iterations without a final answer.",
         "tool_calls": result.get("tool_call_log", []),
         "iterations": result.get("iteration", 0),
         "pending_approval": result.get("pending_approval"),

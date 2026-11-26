@@ -10,6 +10,7 @@ import json
 import logging
 
 from app.config import setting
+from app.graph.condition_evaluator import ConditionResult, evaluate_condition
 from app.graph.execution_registry import WRITE_INTENTS, is_write_tool
 from app.graph.policy_gate import GLOBAL_REFUND_CEILING
 from app.graph.state import AgentState
@@ -83,6 +84,46 @@ def _invoke_write_tool(tool_name: str, tenant_id: str, customer_id: str, **kwarg
 
 
 # ---------------------------------------------------------------------------
+# Condition revalidation inside write workflows
+# ---------------------------------------------------------------------------
+
+def _revalidate_pre_condition(
+    pre_condition: dict | None,
+    tenant_id: str,
+    customer_id: str,
+    order_id: str,
+) -> dict | None:
+    """Re-read evidence and re-evaluate the condition just before writing.
+
+    Returns a failure dict if the condition is no longer satisfied, None if OK.
+    Called when a conditional executor delegates to a write workflow.
+    """
+    if not pre_condition:
+        return None
+
+    from app.graph.condition_evaluator import required_tools_for_condition
+
+    condition = pre_condition.get("condition") or {}
+    if not condition:
+        return None
+
+    evidence: dict[str, dict] = {}
+    for tool_name in required_tools_for_condition(condition):
+        evidence[tool_name] = _invoke_read_tool(
+            tool_name, tenant_id, customer_id, order_id=order_id,
+        )
+
+    result = evaluate_condition(condition, evidence)
+    if result["status"] != ConditionResult.SATISFIED:
+        reason = result.get("reason", "Condition no longer satisfied.")
+        return {
+            "domain_result": f"The condition was re-checked and is no longer met: {reason}",
+            "status": "blocked",
+        }
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Per-intent deterministic workflows
 # ---------------------------------------------------------------------------
 
@@ -91,13 +132,15 @@ def _execute_refund_workflow(
     customer_id: str,
     entities: dict,
     constraints: dict,
+    pre_condition: dict | None = None,
 ) -> dict:
     """Deterministic refund workflow:
     1. Retrieve latest order state
     2. Check return eligibility
-    3. Validate constraints
-    4. Check approval requirement
-    5. Execute refund
+    3. Revalidate pre-condition (if from conditional executor)
+    4. Validate constraints
+    5. Check approval requirement
+    6. Execute refund
     """
     order_id = entities.get("order_id", "")
     tool_calls: list[dict] = []
@@ -111,7 +154,7 @@ def _execute_refund_workflow(
     if order_details.get("error"):
         return {
             "domain_result": f"Could not process refund: {order_details['error']}",
-            "status": "fulfilled",
+            "status": "failed",
             "tool_calls": tool_calls,
         }
 
@@ -125,11 +168,18 @@ def _execute_refund_workflow(
         reason = eligibility.get("reason", "Not eligible for return/refund.")
         return {
             "domain_result": reason,
-            "status": "fulfilled",
+            "status": "blocked",
             "tool_calls": tool_calls,
         }
 
-    # Step 3: Build refund parameters from policy constraints and order state
+    # Step 3: Revalidate pre-condition inside the write path
+    cond_failure = _revalidate_pre_condition(
+        pre_condition, tenant_id, customer_id, order_id,
+    )
+    if cond_failure:
+        return {**cond_failure, "tool_calls": tool_calls}
+
+    # Step 4: Build refund parameters from policy constraints and order state
     amount = eligibility.get("amount") or order_details.get("total_amount", 0)
     refund_type = constraints.get("refund_type") or eligibility.get("refund_type", "original_method")
 
@@ -139,7 +189,7 @@ def _execute_refund_workflow(
         "refund_type": refund_type,
     }
 
-    # Step 4: Hard constraint check
+    # Step 5: Hard constraint check
     violation = _hard_constraint_check("initiate_refund", refund_args, constraints)
     if violation:
         tool_calls.append({
@@ -152,7 +202,7 @@ def _execute_refund_workflow(
             "tool_calls": tool_calls,
         }
 
-    # Step 5: Approval check
+    # Step 6: Approval check
     approval_reasons = _needs_approval("initiate_refund", refund_args, constraints)
     if approval_reasons:
         pending = {"tool": "initiate_refund", "args": refund_args, "reasons": approval_reasons}
@@ -171,7 +221,7 @@ def _execute_refund_workflow(
             "tool_calls": tool_calls,
         }
 
-    # Step 6: Execute the refund
+    # Step 7: Execute the refund
     refund_result = _invoke_write_tool(
         "initiate_refund", tenant_id, customer_id, **refund_args,
     )
@@ -196,11 +246,13 @@ def _execute_cancel_workflow(
     customer_id: str,
     entities: dict,
     constraints: dict,
+    pre_condition: dict | None = None,
 ) -> dict:
     """Deterministic cancellation workflow:
     1. Retrieve latest order state
-    2. Validate cancellability
-    3. Execute cancellation
+    2. Revalidate pre-condition (if from conditional executor)
+    3. Validate cancellability
+    4. Execute cancellation
     """
     order_id = entities.get("order_id", "")
     tool_calls: list[dict] = []
@@ -214,11 +266,18 @@ def _execute_cancel_workflow(
     if order_details.get("error"):
         return {
             "domain_result": f"Could not process cancellation: {order_details['error']}",
-            "status": "fulfilled",
+            "status": "failed",
             "tool_calls": tool_calls,
         }
 
-    # Step 2: Hard constraint check
+    # Step 2: Revalidate pre-condition inside the write path
+    cond_failure = _revalidate_pre_condition(
+        pre_condition, tenant_id, customer_id, order_id,
+    )
+    if cond_failure:
+        return {**cond_failure, "tool_calls": tool_calls}
+
+    # Step 3: Hard constraint check
     cancel_args = {"order_id": order_id}
     violation = _hard_constraint_check("cancel_order", cancel_args, constraints)
     if violation:
@@ -232,7 +291,7 @@ def _execute_cancel_workflow(
             "tool_calls": tool_calls,
         }
 
-    # Step 3: Approval check
+    # Step 4: Approval check
     approval_reasons = _needs_approval("cancel_order", cancel_args, constraints)
     if approval_reasons:
         pending = {"tool": "cancel_order", "args": cancel_args, "reasons": approval_reasons}
@@ -251,7 +310,7 @@ def _execute_cancel_workflow(
             "tool_calls": tool_calls,
         }
 
-    # Step 4: Execute cancellation
+    # Step 5: Execute cancellation
     cancel_result = _invoke_write_tool(
         "cancel_order", tenant_id, customer_id, **cancel_args,
     )
@@ -266,7 +325,7 @@ def _execute_cancel_workflow(
     else:
         return {
             "domain_result": cancel_result.get("error", "Cancellation failed."),
-            "status": "fulfilled",
+            "status": "failed",
             "tool_calls": tool_calls,
         }
 
@@ -305,7 +364,13 @@ def write_executor_node(state: AgentState) -> dict:
     entities = result.get("entities", {})
     constraints = result.get("constraints", {})
 
-    workflow_result = workflow(tenant_id, customer_id, entities, constraints)
+    try:
+        workflow_result = workflow(tenant_id, customer_id, entities, constraints)
+    except Exception:
+        logger.exception("Write workflow failed for intent '%s'", intent)
+        result["domain_result"] = "An unexpected error occurred while processing your request. Please try again."
+        result["status"] = "failed"
+        return {"processed_results": [result]}
 
     result["tool_calls"] = workflow_result.get("tool_calls", [])
     result["domain_result"] = workflow_result["domain_result"]

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from uuid import UUID
 
 from app.graph.policy_gate import GLOBAL_REFUND_CEILING
 from app.graph.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 NEAR_CEILING_THRESHOLD = 0.8
 RECENT_DELIVERY_DAYS = 1
@@ -35,7 +38,7 @@ def _verify_refund(tenant_id: str, customer_id: str, order_id: str) -> dict:
         db.close()
 
 
-def _verify_cancel(tenant_id: str, order_id: str) -> dict:
+def _verify_cancel(tenant_id: str, customer_id: str, order_id: str) -> dict:
     from sqlalchemy import select
 
     from app.database import SessionLocal
@@ -45,6 +48,7 @@ def _verify_cancel(tenant_id: str, order_id: str) -> dict:
     try:
         stmt = select(Order).where(
             Order.tenant_id == UUID(tenant_id),
+            Order.customer_id == customer_id,
             Order.order_id == order_id,
         )
         order = db.execute(stmt).scalar_one_or_none()
@@ -59,7 +63,7 @@ def _verify_cancel(tenant_id: str, order_id: str) -> dict:
 
 VERIFIERS = {
     "initiate_refund": lambda tid, cid, tc: _verify_refund(tid, cid, tc.get("args", {}).get("order_id", "")),
-    "cancel_order": lambda tid, cid, tc: _verify_cancel(tid, tc.get("args", {}).get("order_id", "")),
+    "cancel_order": lambda tid, cid, tc: _verify_cancel(tid, cid, tc.get("args", {}).get("order_id", "")),
 }
 
 
@@ -67,7 +71,7 @@ VERIFIERS = {
 # Audit: flag anomalies worth a human glance
 # ---------------------------------------------------------------------------
 
-def _audit_tool_calls(tool_calls: list[dict], tenant_id: str, order_id: str) -> list[dict]:
+def _audit_tool_calls(tool_calls: list[dict], tenant_id: str, customer_id: str, order_id: str) -> list[dict]:
     flags: list[dict] = []
 
     write_count = sum(1 for tc in tool_calls if tc.get("tool") in VERIFIERS and not tc.get("blocked"))
@@ -92,7 +96,7 @@ def _audit_tool_calls(tool_calls: list[dict], tenant_id: str, order_id: str) -> 
                 })
 
             oid = args.get("order_id", "")
-            delivery = _get_delivery_date(tenant_id, oid)
+            delivery = _get_delivery_date(tenant_id, customer_id, oid)
             if delivery and (date.today() - delivery) < timedelta(days=RECENT_DELIVERY_DAYS):
                 flags.append({
                     "flag": "RECENT_DELIVERY_REFUND",
@@ -101,7 +105,7 @@ def _audit_tool_calls(tool_calls: list[dict], tenant_id: str, order_id: str) -> 
 
         if tool == "cancel_order":
             oid = args.get("order_id", "")
-            shipping_status = _get_shipping_status(tenant_id, oid)
+            shipping_status = _get_shipping_status(tenant_id, customer_id, oid)
             if shipping_status in ("shipped", "in_transit"):
                 flags.append({
                     "flag": "CANCEL_AFTER_SHIP",
@@ -111,7 +115,7 @@ def _audit_tool_calls(tool_calls: list[dict], tenant_id: str, order_id: str) -> 
     return flags
 
 
-def _get_delivery_date(tenant_id: str, order_id: str) -> date | None:
+def _get_delivery_date(tenant_id: str, customer_id: str, order_id: str) -> date | None:
     from app.config import setting
     if setting.agent_mode != "prod":
         return None
@@ -125,6 +129,7 @@ def _get_delivery_date(tenant_id: str, order_id: str) -> date | None:
     try:
         stmt = select(Order.delivery_date).where(
             Order.tenant_id == UUID(tenant_id),
+            Order.customer_id == customer_id,
             Order.order_id == order_id,
         )
         return db.execute(stmt).scalar_one_or_none()
@@ -132,7 +137,7 @@ def _get_delivery_date(tenant_id: str, order_id: str) -> date | None:
         db.close()
 
 
-def _get_shipping_status(tenant_id: str, order_id: str) -> str | None:
+def _get_shipping_status(tenant_id: str, customer_id: str, order_id: str) -> str | None:
     from app.config import setting
     if setting.agent_mode != "prod":
         return None
@@ -146,6 +151,7 @@ def _get_shipping_status(tenant_id: str, order_id: str) -> str | None:
     try:
         stmt = select(Order.status).where(
             Order.tenant_id == UUID(tenant_id),
+            Order.customer_id == customer_id,
             Order.order_id == order_id,
         )
         return db.execute(stmt).scalar_one_or_none()
@@ -173,34 +179,39 @@ def action_check_node(state: AgentState) -> dict:
         if not tool_calls:
             continue
 
-        # --- Verify (prod only) ---
-        if is_prod:
-            for tc in tool_calls:
-                if tc.get("blocked"):
-                    continue
-                tool_name = tc.get("tool", "")
-                verifier = VERIFIERS.get(tool_name)
-                if not verifier:
-                    continue
+        try:
+            # --- Verify (prod only) ---
+            if is_prod:
+                for tc in tool_calls:
+                    if tc.get("blocked"):
+                        continue
+                    tool_name = tc.get("tool", "")
+                    verifier = VERIFIERS.get(tool_name)
+                    if not verifier:
+                        continue
 
-                verification = verifier(tenant_id, customer_id, tc)
-                tc["verification"] = verification
+                    verification = verifier(tenant_id, customer_id, tc)
+                    tc["verification"] = verification
 
-                if not verification.get("verified"):
-                    result["status"] = "failed"
-                    result["domain_result"] = (
-                        f"We attempted to process your request but it didn't complete "
-                        f"successfully. Please try again or contact support."
-                    )
-                    result["failure_reason"] = verification.get("reason", "unknown")
-                    break
+                    if not verification.get("verified"):
+                        result["status"] = "failed"
+                        result["domain_result"] = (
+                            "We attempted to process your request but it didn't complete "
+                            "successfully. Please try again or contact support."
+                        )
+                        result["failure_reason"] = verification.get("reason", "unknown")
+                        break
 
-        # --- Audit (always) ---
-        audit_flags = _audit_tool_calls(
-            tool_calls, tenant_id,
-            result.get("entities", {}).get("order_id", ""),
-        )
-        if audit_flags:
-            result["audit_flags"] = audit_flags
+            # --- Audit (always) ---
+            audit_flags = _audit_tool_calls(
+                tool_calls, tenant_id, customer_id,
+                result.get("entities", {}).get("order_id", ""),
+            )
+            if audit_flags:
+                result["audit_flags"] = audit_flags
+        except Exception:
+            logger.exception(
+                "action_check failed for intent '%s'", result.get("intent", "unknown"),
+            )
 
     return {"intent_results": intent_results}
