@@ -62,3 +62,34 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t multitenant:${{ github.sha }} .
+
+      - name: Start Docker container
+        run: |
+          docker run -d \
+            --name multitenant-smoke \
+            --network host \
+            -e APP_ENV=test \
+            -e AGENT_MODE=mock \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            multitenant:${{ github.sha }}
+
+      - name: Smoke test container
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:8000/health; then
+              echo "Container health check passed"
+              exit 0
+            fi
+
+            echo "Waiting for application to start... ($i/30)"
+            sleep 2
+          done
+
+          echo "Container failed to become healthy"
+          docker logs multitenant-smoke
+          exit 1
+
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker rm -f multitenant-smoke || true
