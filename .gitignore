@@ -1,11 +1,28 @@
 Revision.txt
-.venv
-.env
 files
 :memory:.ses
 CODE_EXPLANATION.txt
 app/graph/GRAPH_WORKFLOW.txt
 RESPONSE_AGENT_PLAN.md
 FLOW_REQUESTS.txt
+
+
+# Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Model and application caches
+fastembed_cache/
+.cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
