@@ -1,0 +1,954 @@
+{
+  "schema_version": 1,
+  "dataset": "Eval/golden_dataset.json",
+  "description": "Per-question annotations for the golden RAG dataset, aligned by position and exact question text. Relevance is defined by evidence quotes: a retrieved chunk is relevant at grade g if it comes from the quote's source_document_id and contains the quote (whitespace-normalised). grade 2 = required authoritative evidence; grade 1 = related but non-authoritative/superseded context. key_facts are groups of alternative strings; an answer covers a group if it contains any alternative.",
+  "categories": [
+    "direct_factual",
+    "paraphrased",
+    "numerical_threshold",
+    "conditional",
+    "multi_document",
+    "unanswerable"
+  ],
+  "items": [
+    {
+      "id": "q01",
+      "question": "What happens to a subscription shipment that has already entered PROCESSING when the customer cancels the subscription?",
+      "category": "direct_factual",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 1,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "Cancellations take effect immediately for future shipments, but do not affect an order that has already entered PROCESSING or SHIPPED status; that shipment will still be delivered and billed as scheduled.",
+          "grade": 2,
+          "role": "authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "delivered"
+        ],
+        [
+          "billed",
+          "charged"
+        ]
+      ]
+    },
+    {
+      "id": "q02",
+      "question": "What happens if a subscription payment fails?",
+      "category": "direct_factual",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 2,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "the customer is notified immediately and given 5 days to update their payment method before the subscription is automatically paused",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "After 3 consecutive failed billing attempts across separate cycles, the subscription is automatically cancelled rather than paused indefinitely.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Customer gets a notification and has 5 days to update payment.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "5 days",
+          "five days"
+        ],
+        [
+          "paused",
+          "pause"
+        ],
+        [
+          "3 consecutive",
+          "three consecutive"
+        ],
+        [
+          "cancel",
+          "cancelled",
+          "canceled",
+          "cancellation"
+        ]
+      ]
+    },
+    {
+      "id": "q03",
+      "question": "When a customer tries to cancel their subscription, what is the support agent supposed to do before processing it?",
+      "category": "direct_factual",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 14,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "support agents are expected to offer one retention incentive before completing the cancellation, such as a discount on the next 2 billing cycles or a one-time pause option, unless the customer explicitly states they do not want to hear retention offers",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Offer one retention incentive — either a discount for 2 cycles or a one-time pause.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "retention"
+        ],
+        [
+          "discount"
+        ],
+        [
+          "pause"
+        ]
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "my package hasn't moved in like two weeks, what do I do?",
+      "category": "paraphrased",
+      "secondary_categories": [
+        "multi_document",
+        "conditional"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "7f6b946",
+        "index": 6,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "A package is considered lost if tracking shows no movement for 10 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "An international package is considered lost if tracking shows no movement for 21 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "After about 10 business days of no tracking movement. International is longer — around 3 weeks.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "10 consecutive business days",
+          "10 business days",
+          "ten business days"
+        ],
+        [
+          "21",
+          "twenty-one"
+        ],
+        [
+          "claim"
+        ]
+      ]
+    },
+    {
+      "id": "q05",
+      "question": "can I get overnight shipping to Hawaii?",
+      "category": "paraphrased",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "7f6b946",
+        "index": 7,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "Shipping to Alaska, Hawaii, and U.S. territories may take an additional 2 to 4 business days beyond standard continental timelines, and expedited or overnight options are not available for these destinations.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "No. Alaska, Hawaii, and U.S. territories are limited to standard shipping only.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "not available",
+          "isn't available",
+          "unavailable",
+          "not offered",
+          "cannot",
+          "can't",
+          "only standard"
+        ],
+        [
+          "2 to 4",
+          "2-4",
+          "2–4",
+          "two to four"
+        ]
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "I paid with a credit card that I cancelled last month. How will I get my refund?",
+      "category": "paraphrased",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 12,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "refund_policy",
+          "quote": "If the original payment method is no longer valid (for example, an expired card), the refund will be issued as store credit instead.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Refund gets issued as store credit.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "store credit"
+        ]
+      ]
+    },
+    {
+      "id": "q07",
+      "question": "A domestic package has had no tracking movement for 11 business days after being shipped. Can it be considered lost?",
+      "category": "numerical_threshold",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 3,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "A package is considered lost if tracking shows no movement for 10 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "After about 10 business days of no tracking movement.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "10 consecutive business days",
+          "10 business days",
+          "ten consecutive business days"
+        ],
+        [
+          "lost"
+        ]
+      ]
+    },
+    {
+      "id": "q08",
+      "question": "A customer insists the refund approval threshold is $100 and quotes a policy document. What is the actual current threshold for manager approval?",
+      "category": "numerical_threshold",
+      "secondary_categories": [
+        "multi_document"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 4,
+        "question_modified": false,
+        "answer_modified": true,
+        "modification_reason": "Removed the final sentence 'The current policy applies to all active orders.', which no source document states.",
+        "original_answer": "The current active refund policy requires manager approval for refunds over $200, regardless of the reason. The $100 threshold belongs to a previous version of the policy that has been superseded. The current policy applies to all active orders."
+      },
+      "evidence": [
+        {
+          "source_document_id": "refund_policy",
+          "quote": "Refunds over $200 require manager approval regardless of the reason for the refund.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "refund_policy_v1",
+          "quote": "Refunds over $100 require manager approval regardless of the reason for the refund.",
+          "grade": 1,
+          "role": "superseded"
+        },
+        {
+          "source_document_id": "refund_policy_v1",
+          "quote": "This document reflects policy prior to Q3 update. The current active policy is in refund_policy.md.",
+          "grade": 1,
+          "role": "superseded"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Roughly around the $200 mark, manager approval is required.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "$200"
+        ],
+        [
+          "manager"
+        ],
+        [
+          "superseded",
+          "previous version",
+          "older version",
+          "earlier version",
+          "outdated",
+          "prior",
+          "old policy",
+          "no longer",
+          "version 1"
+        ]
+      ]
+    },
+    {
+      "id": "q09",
+      "question": "How much does it cost to ship a $30 order with standard shipping domestically versus internationally?",
+      "category": "numerical_threshold",
+      "secondary_categories": [
+        "multi_document"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 18,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "Standard shipping is free on orders over $35 before tax. Orders under $35 incur a flat shipping fee of $4.99.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "International standard shipping starts at $14.99 and varies by destination country and order weight; the exact cost is calculated at checkout.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "Free international shipping is not offered on any order, regardless of order value.",
+          "grade": 2,
+          "role": "authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "$4.99"
+        ],
+        [
+          "$35"
+        ],
+        [
+          "$14.99"
+        ]
+      ]
+    },
+    {
+      "id": "q10",
+      "question": "The internal support FAQ says free standard shipping applies to orders over $40. Is that the correct threshold?",
+      "category": "numerical_threshold",
+      "secondary_categories": [
+        "multi_document"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 21,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "Standard shipping is free on orders over $35 before tax. Orders under $35 incur a flat shipping fee of $4.99.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Free standard shipping applies to domestic orders over $40.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "$35"
+        ]
+      ]
+    },
+    {
+      "id": "q11",
+      "question": "I've gotten 4 refunds in the past 2 months. My latest order arrived damaged and it's worth $30. Will the refund be automatic?",
+      "category": "conditional",
+      "secondary_categories": [
+        "numerical_threshold"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 10,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "refund_policy",
+          "quote": "Customers who have received more than 3 refunds in a rolling 90-day period will have any additional refund requests automatically flagged for manager review, regardless of the amount",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "refund_policy",
+          "quote": "Damaged item refunds are prioritized and, if under $50, are auto-approved immediately upon report without waiting for the item to be returned.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "If they've had more than 3 refunds in the past 90 days, any new request gets flagged automatically for manager review.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "manager"
+        ],
+        [
+          "more than 3",
+          "more than three",
+          "3 refunds",
+          "three refunds"
+        ],
+        [
+          "90"
+        ]
+      ]
+    },
+    {
+      "id": "q12",
+      "question": "I ordered to a remote village in Japan. It's been 20 business days since it shipped and tracking shows occasional movement. Should I file a lost package claim?",
+      "category": "conditional",
+      "secondary_categories": [
+        "numerical_threshold"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 11,
+        "question_modified": false,
+        "answer_modified": true,
+        "modification_reason": "Original stated as fact that the village is a remote region; the policy defines remote regions by the carrier's serviceable area list, so this is now stated as a condition.",
+        "original_answer": "Not yet. International standard shipping takes 7 to 14 business days after shipping, and shipments to remote regions can take an additional 5 to 10 business days — so delivery could take up to 24 business days total. Since your tracking shows occasional movement, the package is still in transit and does not qualify as lost. A package is only considered lost if tracking shows no movement for 21 consecutive business days."
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "International standard shipping takes 7 to 14 business days from the date the order ships",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "Shipments to remote regions, as defined by the carrier's serviceable area list, may take an additional 5 to 10 business days beyond standard international timelines.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "An international package is considered lost if tracking shows no movement for 21 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "21 consecutive",
+          "21 business",
+          "twenty-one"
+        ],
+        [
+          "in transit",
+          "not lost",
+          "not considered lost",
+          "does not qualify",
+          "doesn't qualify",
+          "not yet",
+          "too early"
+        ],
+        [
+          "5 to 10",
+          "5-10",
+          "5–10"
+        ]
+      ]
+    },
+    {
+      "id": "q13",
+      "question": "I have a domestic order in PROCESSING and an international order also in PROCESSING. Can I change the shipping address on either?",
+      "category": "conditional",
+      "secondary_categories": [
+        "multi_document"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 9,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "Shipping addresses can be changed free of charge as long as the order status is still PENDING or PROCESSING.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "Shipping addresses for international orders can only be changed while the order status is PENDING.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Yes, if the order is still PENDING or PROCESSING.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "PENDING"
+        ],
+        [
+          "customs"
+        ]
+      ]
+    },
+    {
+      "id": "q14",
+      "question": "I've had 2 failed subscription billing attempts. How many more failures would it take before my subscription is automatically cancelled, and what happens between now and then?",
+      "category": "conditional",
+      "secondary_categories": [
+        "numerical_threshold"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 19,
+        "question_modified": false,
+        "answer_modified": true,
+        "modification_reason": "Original assumed the 2 failures were consecutive and in separate cycles, and asserted the subscription 'remains paused'; the policy only pauses it if the payment method is not updated within 5 days. Both are now stated as conditions.",
+        "original_answer": "Your subscription will be automatically cancelled after 3 consecutive failed billing attempts across separate cycles. You have had 2, so one more consecutive failure would trigger cancellation. Between now and then, your subscription remains paused — no shipment is sent for any cycle that fails to charge. You should update your payment method within 5 days of each failed attempt to avoid further pauses."
+      },
+      "evidence": [
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "After 3 consecutive failed billing attempts across separate cycles, the subscription is automatically cancelled rather than paused indefinitely.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "No shipment is sent for a billing cycle that fails to charge successfully.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "the customer is notified immediately and given 5 days to update their payment method before the subscription is automatically paused",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "If billing fails 3 separate cycles in a row, the subscription auto-cancels.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "3 consecutive",
+          "three consecutive",
+          "one more"
+        ],
+        [
+          "5 days",
+          "five days"
+        ],
+        [
+          "no shipment",
+          "not be sent",
+          "won't be sent",
+          "isn't sent",
+          "not sent",
+          "no shipments",
+          "won't ship",
+          "will not ship"
+        ]
+      ]
+    },
+    {
+      "id": "q15",
+      "question": "How does the lost package claim process differ between domestic and international orders?",
+      "category": "multi_document",
+      "secondary_categories": [
+        "numerical_threshold"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 7,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "A package is considered lost if tracking shows no movement for 10 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "Lost package claims should be filed within 30 days of the expected delivery date. Confirmed lost packages are eligible for a full replacement or refund at the customer's choice",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "An international package is considered lost if tracking shows no movement for 21 consecutive business days after the SHIPPED status",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "Lost package claims should be filed within 45 days of the expected delivery date. Confirmed lost international packages are eligible for a full refund only",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "After about 10 business days of no tracking movement. International is longer — around 3 weeks.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "10 consecutive",
+          "10 business"
+        ],
+        [
+          "21"
+        ],
+        [
+          "30 days"
+        ],
+        [
+          "45 days"
+        ],
+        [
+          "refund only",
+          "only a full refund",
+          "only eligible for a full refund",
+          "only for a full refund",
+          "no replacement",
+          "replacements are not",
+          "replacement shipments are not",
+          "not offered"
+        ]
+      ]
+    },
+    {
+      "id": "q16",
+      "question": "If I return a $150 item from my subscription order, will my subscription also stop?",
+      "category": "multi_document",
+      "secondary_categories": [
+        "numerical_threshold"
+      ],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 6,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "refund_policy",
+          "quote": "Refunds between $50 and $200 require a brief review by a support agent before processing, typically completed within one business day.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "refund_policy",
+          "quote": "If a refund is requested for an order that is part of an active subscription plan (such as a recurring supply box), the subscription itself is not automatically cancelled.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "subscription_policy",
+          "quote": "Refunding a single shipment does not cancel the subscription itself; the two actions are independent and must be requested separately if a customer wants both.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "No. A return and a cancellation are two separate things.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "not automatically cancel",
+          "does not cancel",
+          "doesn't cancel",
+          "won't cancel",
+          "will not cancel",
+          "not cancel",
+          "independent",
+          "separately",
+          "separate",
+          "won't stop",
+          "will not stop",
+          "does not stop",
+          "doesn't stop"
+        ],
+        [
+          "agent"
+        ]
+      ]
+    },
+    {
+      "id": "q17",
+      "question": "I want to return my Percussive Massage Gun (SKU: REC-002). It's not defective, I just don't want it. What fees apply and can it be shipped internationally if I want it sent to a friend abroad?",
+      "category": "multi_document",
+      "secondary_categories": [],
+      "expected_behavior": "answer",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 13,
+        "question_modified": false,
+        "answer_modified": false
+      },
+      "evidence": [
+        {
+          "source_document_id": "product_catalog",
+          "quote": "REC-002 — Percussive Massage Gun (Mini)** Price: $79.99 | Weight: 520g | Dims: 18×12×6 Battery: Built-in lithium-ion | Battery life: 3 hours | Charge: USB-C Speed settings: 5 | Attachments: 4 included International shippable: No | Final sale eligible: No",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "refund_policy",
+          "quote": "Restocking fees are 10% of the item price and apply only to non-defective returns of items marked as \"final sale eligible: no\" in the product catalog.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "shipping_policy_international",
+          "quote": "Certain product categories, including but not limited to batteries, aerosols, and perishable goods, cannot be shipped internationally due to carrier and customs restrictions.",
+          "grade": 2,
+          "role": "authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "10% of the item price. It only applies to items returned in non-defective condition that are marked as \"final sale eligible: no\" in the catalog.",
+          "grade": 1,
+          "role": "non_authoritative"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "Anything with a lithium battery cannot go international — carrier restrictions.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "10%",
+          "10 percent"
+        ],
+        [
+          "lithium"
+        ]
+      ]
+    },
+    {
+      "id": "q18",
+      "question": "My package says RETURNED_TO_SENDER. What are my options?",
+      "category": "unanswerable",
+      "secondary_categories": [
+        "partial_context"
+      ],
+      "expected_behavior": "abstain",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "d7fea7f",
+        "index": 15,
+        "question_modified": false,
+        "answer_modified": true,
+        "modification_reason": "Original answer is not supported: no document links RETURNED_TO_SENDER to a refund, and 'within 30 days of the original delivery date' does not apply to an undelivered package. The documents only define the status, so the reference now explains the status and abstains on the options.",
+        "original_answer": "RETURNED_TO_SENDER means the carrier was unable to deliver the package after multiple attempts and it is being sent back to the warehouse. You can request a refund under the standard refund policy within 30 days of the original delivery date. The refund amount and approval process depend on the order value: under $50 is automatic, $50-$200 requires agent review, and over $200 requires manager approval."
+      },
+      "evidence": [
+        {
+          "source_document_id": "shipping_policy_domestic",
+          "quote": "RETURNED_TO_SENDER: the carrier was unable to deliver the package after multiple attempts and it is being sent back to the warehouse.",
+          "grade": 2,
+          "role": "authoritative"
+        }
+      ],
+      "key_facts": [
+        [
+          "unable to deliver",
+          "could not deliver",
+          "couldn't deliver",
+          "undeliverable",
+          "failed delivery",
+          "delivery attempts",
+          "multiple attempts"
+        ],
+        [
+          "warehouse",
+          "sent back",
+          "returned to the sender",
+          "returning"
+        ]
+      ]
+    },
+    {
+      "id": "q19",
+      "question": "Do you provide prepaid return shipping labels?",
+      "category": "unanswerable",
+      "secondary_categories": [
+        "superseded_distractor"
+      ],
+      "expected_behavior": "abstain",
+      "origin": {
+        "dataset": "Eval/eval_dataset.json",
+        "commit": "7f6b946",
+        "index": 19,
+        "question_modified": false,
+        "answer_modified": true,
+        "modification_reason": "Original advised contacting customer support (not stated in any document) and did not mention that the superseded refund_policy_v1, which is still indexed, describes prepaid labels. The reference now tells the model to abstain and not rely on the superseded policy.",
+        "original_answer": "The available policies do not contain information about return shipping labels or who pays for return shipping. You should contact customer support for details on the return process."
+      },
+      "evidence": [
+        {
+          "source_document_id": "refund_policy_v1",
+          "quote": "In those cases, a prepaid return label will be emailed within 1 business day.",
+          "grade": 1,
+          "role": "superseded"
+        },
+        {
+          "source_document_id": "support_internal_faq",
+          "quote": "This used to be offered on defective items under the old policy, but check the current refund policy for what applies today.",
+          "grade": 1,
+          "role": "non_authoritative"
+        }
+      ],
+      "key_facts": []
+    },
+    {
+      "id": "q20",
+      "question": "Which payment methods do you accept at checkout? Can I pay with PayPal?",
+      "category": "unanswerable",
+      "secondary_categories": [
+        "missing_topic"
+      ],
+      "expected_behavior": "abstain",
+      "origin": {
+        "dataset": null,
+        "commit": null,
+        "index": null,
+        "question_modified": false,
+        "answer_modified": false,
+        "modification_reason": "New question. No billing/payments document exists; the documents only mention the 'original payment method used at checkout' without listing accepted methods."
+      },
+      "evidence": [],
+      "key_facts": []
+    }
+  ]
+}

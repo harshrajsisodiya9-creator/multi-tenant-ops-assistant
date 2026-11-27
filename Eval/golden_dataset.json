@@ -1,0 +1,82 @@
+[
+  {
+    "question": "What happens to a subscription shipment that has already entered PROCESSING when the customer cancels the subscription?",
+    "answer": "The shipment will still be delivered and billed as scheduled. Cancellation affects future shipments but does not affect an order already in PROCESSING or SHIPPED status."
+  },
+  {
+    "question": "What happens if a subscription payment fails?",
+    "answer": "The customer is notified immediately and has 5 days to update the payment method. If the payment is not fixed, the subscription is automatically paused and no shipment is sent for that failed billing cycle. After 3 consecutive failed billing attempts across separate cycles, the subscription is automatically cancelled."
+  },
+  {
+    "question": "When a customer tries to cancel their subscription, what is the support agent supposed to do before processing it?",
+    "answer": "The support agent is expected to offer one retention incentive before completing the cancellation, such as a discount on the next 2 billing cycles or a one-time pause option. However, if the customer explicitly states they do not want to hear retention offers, the agent must skip this step. If the customer declines the offer, the cancellation must proceed without further delay."
+  },
+  {
+    "question": "my package hasn't moved in like two weeks, what do I do?",
+    "answer": "It depends on whether the order is domestic or international. For domestic orders, a package is considered lost after 10 consecutive business days without tracking movement after SHIPPED status — two weeks (approximately 10 business days) likely meets this threshold. For international orders, the threshold is 21 consecutive business days. You should file a lost package claim: within 30 days of expected delivery for domestic, or within 45 days for international."
+  },
+  {
+    "question": "can I get overnight shipping to Hawaii?",
+    "answer": "No. Overnight and expedited shipping options are not available for Alaska, Hawaii, and U.S. territories. Only standard shipping is available, and it takes an additional 2 to 4 business days beyond the continental United States timeline."
+  },
+  {
+    "question": "I paid with a credit card that I cancelled last month. How will I get my refund?",
+    "answer": "Refunds are issued to the original payment method used at checkout. Since your original credit card is no longer valid, the refund will be issued as store credit instead."
+  },
+  {
+    "question": "A domestic package has had no tracking movement for 11 business days after being shipped. Can it be considered lost?",
+    "answer": "Yes. The domestic policy considers a package lost after 10 consecutive business days without tracking movement after SHIPPED. At 11 business days, the package qualifies as lost."
+  },
+  {
+    "question": "A customer insists the refund approval threshold is $100 and quotes a policy document. What is the actual current threshold for manager approval?",
+    "answer": "The current active refund policy requires manager approval for refunds over $200, regardless of the reason. The $100 threshold belongs to a previous version of the policy that has been superseded."
+  },
+  {
+    "question": "How much does it cost to ship a $30 order with standard shipping domestically versus internationally?",
+    "answer": "For domestic standard shipping, a $30 order incurs a flat shipping fee of $4.99 because free shipping only applies to orders over $35. For international standard shipping, the cost starts at $14.99 and varies by destination country and order weight — the exact cost is calculated at checkout. Free international shipping is not offered regardless of order value."
+  },
+  {
+    "question": "The internal support FAQ says free standard shipping applies to orders over $40. Is that the correct threshold?",
+    "answer": "No. The official domestic shipping policy states that standard shipping is free on orders over $35 before tax. Orders under $35 incur a flat $4.99 fee. The $40 figure in the internal FAQ is incorrect — the authoritative shipping policy document sets the threshold at $35."
+  },
+  {
+    "question": "I've gotten 4 refunds in the past 2 months. My latest order arrived damaged and it's worth $30. Will the refund be automatic?",
+    "answer": "No. Although damaged item refunds under $50 are normally auto-approved immediately with photo evidence, you have received more than 3 refunds in a rolling 90-day period. Any additional refund requests are automatically flagged for manager review regardless of the amount, as part of standard fraud prevention practice."
+  },
+  {
+    "question": "I ordered to a remote village in Japan. It's been 20 business days since it shipped and tracking shows occasional movement. Should I file a lost package claim?",
+    "answer": "Not yet. International standard shipping takes 7 to 14 business days after shipping, and if the destination falls within a remote region on the carrier's serviceable area list, delivery can take an additional 5 to 10 business days — up to 24 business days in total. Since your tracking shows occasional movement, the package is still in transit and does not qualify as lost. An international package is only considered lost if tracking shows no movement for 21 consecutive business days after SHIPPED."
+  },
+  {
+    "question": "I have a domestic order in PROCESSING and an international order also in PROCESSING. Can I change the shipping address on either?",
+    "answer": "You can change the address on the domestic order but not the international one. Domestic shipping addresses can be changed free of charge while the order is PENDING or PROCESSING. However, international shipping addresses can only be changed while the order is PENDING — once it enters PROCESSING, changes are not possible because international customs paperwork is generated at the start of processing and cannot be reissued."
+  },
+  {
+    "question": "I've had 2 failed subscription billing attempts. How many more failures would it take before my subscription is automatically cancelled, and what happens between now and then?",
+    "answer": "Automatic cancellation happens after 3 consecutive failed billing attempts across separate billing cycles. If your 2 failures were consecutive and in separate cycles, one more consecutive failed cycle would trigger automatic cancellation. In the meantime, no shipment is sent for any billing cycle that fails to charge, and after each failed attempt you are notified and have 5 days to update your payment method before the subscription is automatically paused."
+  },
+  {
+    "question": "How does the lost package claim process differ between domestic and international orders?",
+    "answer": "There are three key differences. First, the threshold: domestic packages are considered lost after 10 consecutive business days without tracking movement, while international requires 21 business days. Second, the claim deadline: domestic claims must be filed within 30 days of the expected delivery date, international within 45 days. Third, the resolution: domestic lost packages offer the customer a choice of full replacement or full refund, while international lost packages are eligible for a full refund only — no replacements are offered due to extended re-shipping timelines."
+  },
+  {
+    "question": "If I return a $150 item from my subscription order, will my subscription also stop?",
+    "answer": "No. Refunding a subscription shipment does not automatically cancel the subscription — the two actions are independent. The $150 refund will require a brief review by a support agent (typically completed within one business day, since it falls between $50 and $200). If you want to stop future shipments, you must separately request subscription cancellation."
+  },
+  {
+    "question": "I want to return my Percussive Massage Gun (SKU: REC-002). It's not defective, I just don't want it. What fees apply and can it be shipped internationally if I want it sent to a friend abroad?",
+    "answer": "Since the Percussive Massage Gun is marked as final sale eligible: no in the product catalog, a 10% restocking fee applies on non-defective returns. The item cannot be shipped internationally because it contains a built-in lithium-ion battery, which is restricted for international shipping per the international shipping policy."
+  },
+  {
+    "question": "My package says RETURNED_TO_SENDER. What are my options?",
+    "answer": "RETURNED_TO_SENDER means the carrier was unable to deliver the package after multiple attempts and it is being sent back to the warehouse. The available policy documents do not describe what options you have once a package is returned to sender (for example, whether it will be reshipped or refunded), so your options cannot be determined from the policies."
+  },
+  {
+    "question": "Do you provide prepaid return shipping labels?",
+    "answer": "The current refund policy does not say whether prepaid return shipping labels are provided or who pays for return shipping, so this cannot be confirmed from the current policies. A superseded earlier version of the refund policy offered prepaid labels for damaged or defective items, but that version is no longer active."
+  },
+  {
+    "question": "Which payment methods do you accept at checkout? Can I pay with PayPal?",
+    "answer": "The available policy documents do not list which payment methods are accepted at checkout or whether PayPal is supported, so this cannot be answered from the knowledge base."
+  }
+]
