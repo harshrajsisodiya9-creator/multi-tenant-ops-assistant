@@ -8,10 +8,23 @@ on:
 permissions:
   contents: read
 
+# Never run two deploys at once: two migration tasks racing on the same database
+# would be unsafe. A queued deploy waits instead of cancelling the running one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    name: Build and Push to ECR
+    name: Build, migrate and deploy
     runs-on: ubuntu-latest
+
+    env:
+      ECS_CLUSTER: multi-tenant-cluster
+      ECS_SERVICE: multitenant-api-service
+      TASK_FAMILY: multitenant-api
+      CONTAINER_NAME: api
+      LOG_GROUP: /ecs/multitenant-api
 
     steps:
       - name: Checkout repository
@@ -45,3 +58,84 @@ jobs:
         run: |
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+      # The latest revision in AWS is the source of truth for CPU, memory, roles,
+      # secrets and logging; only the image changes here.
+      - name: Register new task definition revision
+        id: register
+        env:
+          IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+        run: |
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query taskDefinition --output json > current-td.json
+
+          jq --arg NAME "$CONTAINER_NAME" --arg IMAGE "$IMAGE" '
+            .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' current-td.json > new-td.json
+
+          if ! jq -e --arg NAME "$CONTAINER_NAME" \
+              'any(.containerDefinitions[]; .name == $NAME)' new-td.json > /dev/null; then
+            echo "::error::Container '$CONTAINER_NAME' not found in task definition $TASK_FAMILY"
+            exit 1
+          fi
+
+          TD_ARN=$(aws ecs register-task-definition --cli-input-json file://new-td.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "Registered $TD_ARN"
+          echo "task_definition_arn=$TD_ARN" >> "$GITHUB_OUTPUT"
+
+      # Runs with the new image but before the service switches to it, so a failed
+      # migration stops the deploy while the old tasks keep serving.
+      - name: Run database migrations
+        env:
+          TD_ARN: ${{ steps.register.outputs.task_definition_arn }}
+        run: |
+          NET=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+
+          OVERRIDES=$(jq -n --arg NAME "$CONTAINER_NAME" \
+            '{containerOverrides: [{name: $NAME, command: ["alembic", "upgrade", "head"]}]}')
+
+          TASK_ARN=$(aws ecs run-task --cluster "$ECS_CLUSTER" --launch-type FARGATE \
+            --task-definition "$TD_ARN" --network-configuration "$NET" \
+            --overrides "$OVERRIDES" --started-by "github-cd-migrate" \
+            --query 'tasks[0].taskArn' --output text)
+
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "::error::Migration task failed to start"
+            exit 1
+          fi
+          echo "Started migration task $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0]' --output json > migrate-task.json
+          EXIT_CODE=$(jq -r --arg NAME "$CONTAINER_NAME" \
+            '.containers[] | select(.name == $NAME) | .exitCode // "none"' migrate-task.json)
+          STOPPED_REASON=$(jq -r '.stoppedReason // ""' migrate-task.json)
+
+          echo "--- migration logs ---"
+          aws logs get-log-events --log-group-name "$LOG_GROUP" \
+            --log-stream-name "ecs/$CONTAINER_NAME/${TASK_ARN##*/}" --start-from-head \
+            --query 'events[].message' --output text | tr '\t' '\n' \
+            || echo "(could not read logs)"
+          echo "----------------------"
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Migrations failed (exit code: $EXIT_CODE). $STOPPED_REASON"
+            exit 1
+          fi
+          echo "Migrations applied successfully"
+
+      - name: Deploy new revision to ECS service
+        env:
+          TD_ARN: ${{ steps.register.outputs.task_definition_arn }}
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --task-definition "$TD_ARN" --query 'service.serviceName' --output text
+          echo "Waiting for the service to become stable..."
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          echo "Deployed $TD_ARN"
